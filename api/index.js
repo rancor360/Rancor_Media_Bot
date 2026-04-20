@@ -18,7 +18,7 @@ const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.
 const mainMenu = () => Markup.inlineKeyboard([
   [Markup.button.callback('📊 My Stats', 'stats'), Markup.button.callback('💰 Balance', 'balance')],
   [Markup.button.callback('🔗 Referral Link', 'referral'), Markup.button.callback('💸 Redeem', 'redeem')],
-  [Markup.button.url('📱 Join WhatsApp', process.env.WHATSAPP_LINK)]
+  [Markup.button.url('📱 Join WhatsApp', process.env.WHATSAPP_LINK || 'https://t.me')]
 ]);
 
 // Start Command
