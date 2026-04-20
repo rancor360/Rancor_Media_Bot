@@ -1,0 +1,49 @@
+﻿Error 
+2026-04-20 18:28:45.952 [error] Unhandled error while processing {
+  update_id: 537628970,
+  message: {
+    message_id: 1,
+    from: {
+      id: 8204006525,
+      is_bot: false,
+      first_name: 'Franklin',
+      last_name: 'Sebastian',
+      language_code: 'en'
+    },
+    chat: {
+      id: 8204006525,
+      first_name: 'Franklin',
+      last_name: 'Sebastian',
+      type: 'private'
+    },
+    date: 1776707703,
+    text: '/start',
+    entities: [ [Object] ]
+  }
+}
+2026-04-20 18:28:45.952 [error] TelegramError: 400: Bad Request: can't parse inline keyboard button: Text buttons are unallowed in the inline keyboard
+    at Telegram.callApi (/var/task/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async execute (/var/task/node_modules/telegraf/lib/composer.js:518:17)
+    at async /var/task/node_modules/telegraf/lib/composer.js:519:21
+    at async execute (/var/task/node_modules/telegraf/lib/composer.js:518:17)
+    at async execute (/var/task/node_modules/telegraf/lib/composer.js:518:17)
+    at async execute (/var/task/node_modules/telegraf/lib/composer.js:518:17)
+    at async execute (/var/task/node_modules/telegraf/lib/composer.js:518:17)
+    at async execute (/var/task/node_modules/telegraf/lib/composer.js:518:17)
+    at async execute (/var/task/node_modules/telegraf/lib/composer.js:518:17) {
+  response: {
+    ok: false,
+    error_code: 400,
+    description: "Bad Request: can't parse inline keyboard button: Text buttons are unallowed in the inline keyboard"
+  },
+  on: {
+    method: 'sendMessage',
+    payload: {
+      chat_id: 8204006525,
+      message_thread_id: undefined,
+      reply_markup: [Object],
+      text: 'Welcome back, Franklin!'
+    }
+  }
+}
