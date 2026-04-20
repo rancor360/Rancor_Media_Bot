@@ -184,6 +184,18 @@ bot.on('text', async (ctx) => {
 
   // 4. Admin Commands
   if (adminIds.includes(telegram_id)) {
+    if (text === '/admin') {
+      const adminHelp = `⚙️ *Admin Control Panel*\n\n` +
+        `• \`/payouts\` — See pending payout requests.\n` +
+        `• \`/approve <ID>\` — Approve a payout request.\n` +
+        `• \`/setcode <new_code>\` — Update the secret code.\n` +
+        `• \`/setreward <amount>\` — Change amount per referral.\n` +
+        `• \`/setlink <url>\` — Change WhatsApp group link.\n` +
+        `• \`/ban <user_id>\` — Ban a fraudulent user.\n` +
+        `• \`/unban <user_id>\` — Unban a user.\n\n` +
+        `_Note: Do not include brackets (< >) in your commands._`;
+      return ctx.reply(adminHelp, { parse_mode: 'Markdown' });
+    }
     if (text.startsWith('/setcode ')) {
       const code = text.split(' ')[1];
       await supabase.from('settings').update({ secret_code: code }).eq('id', 1);
