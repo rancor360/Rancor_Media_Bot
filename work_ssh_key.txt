@@ -1,0 +1,97 @@
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJmiRrowrLVb47Mf5JnDE9QXr0vtcfHqE4zzcHDC0xV3 work-account@example.com
+
+Rancor Telegram Bot ！ Specification Form
+Fill this out completely and send back to me.
+
+
+SECTION 1 ！ Basic Info
+
+1. What is the full name of your WhatsApp group?
+Answer: R┐n??r M-3d┤a LEVERAGE GROUP 
+
+2. What is the main purpose of the group? (e.g. daily tips, paid courses, signals)
+Answer: FREE CASHOUT CONTEXT
+
+3. Is joining the group free or paid?
+Answer: FREE
+
+4. Roughly how many members do you have now?
+Answer: 600
+
+
+SECTION 2 ！ Referral Rewards
+
+5. What do you want to give people for referring others? (e.g. cash, free access to a paid tier, airtime, data, points)
+Answer: #100-200 Per ref
+
+6. How much per successful referral?
+Answer: #100-200
+
+7. Is there a minimum number of referrals before someone can cash out?
+Answer: yes (3 people)
+
+8. How will you pay people out? (e.g. bank transfer, Opay, Palmpay, crypto)
+Answer: bank transfer
+
+9. Do you want multi-level referrals? (e.g. you also earn when your referral refers someone else)
+Answer: No
+
+SECTION 3 ！ Verification & Fraud Prevention
+
+10. How should the bot confirm someone actually joined the WhatsApp group? (Option A ！ they send a secret code posted in the group / Option B ！ you manually approve each person / Option C ！ other)
+Answer: u will have to explain this secret code
+
+11. How often should the secret join code change? (e.g. daily, weekly, never)
+Answer: you will have to explain this
+
+12. Should one phone number only be allowed to claim rewards once?
+Answer: no
+
+
+SECTION 4 ！ Bot Commands & Experience
+
+13. What language should the bot communicate in? (e.g. English only, Pidgin, both)
+Answer: English 
+
+14. What should happen when someone messages the bot for the first time? (e.g. welcome message, explanation of the program, a menu of options)
+Answer: welcome message and menu of options
+
+15. Should people register their name and phone number when they start the bot?
+Answer: no (not necessary)
+
+16. Which commands do you want the bot to have?
+/refer ！ get my referral link: Yes / No   (yes)
+
+/mystats ！ see how many people I've referred: Yes / No  (yes)
+
+/balance ！ see my reward balance: Yes / No    (yes)
+
+/redeem ！ request a payout: Yes / No     (yes)
+
+
+
+/help ！ see all commands: Yes / No
+Other (describe):
+
+SECTION 5 ！ Admin Controls
+
+17. Do you want admin controls inside the bot?
+Answer: sure, if it's more easy to maneuver 
+
+18. What should you be able to do as admin? (e.g. approve payouts, ban users, change the join code, send a message to all users)
+Answer: approve, payout 
+
+19. Should payout requests be processed automatically or require your approval first?
+Answer: manually 
+
+
+SECTION 6 ！ Extra
+
+20. Do you want the bot to send announcements to all users?
+Answer: no
+
+21. Anything else you want the bot to do that wasn't covered above?
+Answer: no
+
+22. When do you need this ready?
+Answer: as soon as possible!!!

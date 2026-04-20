@@ -1,0 +1,14 @@
+{
+  "name": "rancor-media-bot",
+  "version": "1.0.0",
+  "description": "Referral bot for Rancor Media",
+  "main": "api/index.js",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1",
+    "telegraf": "^4.15.3"
+  },
+  "scripts": {
+    "start": "node api/index.js"
+  }
+}
