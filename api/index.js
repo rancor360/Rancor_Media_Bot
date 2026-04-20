@@ -114,7 +114,7 @@ bot.hears('💸 Redeem', async (ctx) => {
 });
 
 bot.hears('📜 Policies', (ctx) => {
-  const policyText = `📜 *Rancor Media Policies*\n\n1. *One Account Only:* Creating multiple accounts on the same device or for the same person is strictly prohibited.\n2. *Verification:* Referrals only count once the new user joins the WhatsApp group and verifies the secret code.\n3. *Payouts:* Minimum payout is 3 verified referrals. Requests are reviewed manually within 24-48 hours.\n4. *Fraud:* Any attempt to cheat the system will result in a permanent ban and forfeiture of balance.`;
+  const policyText = `📜 *Rancor Media Policies*\n\n1. *One Account Only:* Strictly prohibited. One account per person/device.\n2. *Verification:* Referrals only count once the new user provides their *WhatsApp Number*, joins the group, and enters the *Secret Code*.\n3. *Payouts:* Minimum 3 verified referrals required. Reviewed manually within 24-48 hours.\n4. *Fraud:* Fake referrals or duplicate bank details will result in a permanent ban.`;
   ctx.reply(policyText, { parse_mode: 'Markdown' });
 });
 
