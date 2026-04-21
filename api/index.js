@@ -65,7 +65,7 @@ bot.start(async (ctx) => {
     const instruct = `⏳ *Verification in Progress*\n\nPlease complete these final steps:\n\n` +
       `*Step 2:* Join our WhatsApp Group below.\n` +
       `*Step 3:* Click "Save My Contact", save the number, and *send me a screenshot* on WhatsApp as proof.\n\n` +
-      `Once done, an admin will verify and activate your account!`;
+      `✅ *Note:* After sending proof, please check back within 24 hours (do steady checks to see that you have been verified). An admin will activate your account!`;
     
     const links = Markup.inlineKeyboard([
       [Markup.button.url('📱 Join Group', settings.group_link)],
@@ -82,7 +82,7 @@ bot.start(async (ctx) => {
 
 bot.hears('📊 My Stats', async (ctx) => {
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', ctx.from.id).single();
-  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not yet verified.');
+  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not yet verified. Please check back within 24 hours (do steady checks to see that you have been verified).');
 
   const { data: referrals } = await supabase.from('users').select('first_name').eq('referred_by', ctx.from.id).eq('is_verified', true);
   let list = referrals.length > 0 ? referrals.map(r => `• ${r.first_name}`).join('\n') : 'No verified referrals yet.';
@@ -91,13 +91,13 @@ bot.hears('📊 My Stats', async (ctx) => {
 
 bot.hears('💰 Balance', async (ctx) => {
   const { data: user } = await supabase.from('users').select('balance, is_verified').eq('telegram_id', ctx.from.id).single();
-  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified.');
+  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified. Please check back within 24 hours (do steady checks to see that you have been verified).');
   ctx.reply(`💰 *Current Balance:* ₦${user.balance || 0}`, { parse_mode: 'Markdown' });
 });
 
 bot.hears('🔗 Referral Link', async (ctx) => {
   const { data: user } = await supabase.from('users').select('is_verified').eq('telegram_id', ctx.from.id).single();
-  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified.');
+  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified. Please check back within 24 hours (do steady checks to see that you have been verified).');
 
   const botInfo = await ctx.telegram.getMe();
   const link = `https://t.me/${botInfo.username}?start=${ctx.from.id}`;
@@ -116,7 +116,7 @@ bot.hears('💸 Redeem', async (ctx) => {
 });
 
 bot.hears('📜 Policies', (ctx) => {
-  ctx.reply(`📜 *Rancor Media Rules*\n\n1. One account per person.\n2. You must join the group AND save our contact (send proof).\n3. Admin verifies all accounts manually.\n4. Min 3 referrals to cash out.\n5. Fraud = Instant Ban.`, { parse_mode: 'Markdown' });
+  ctx.reply(`📜 *Rancor Media Rules*\n\n1. One account per person.\n2. You must join the group AND save our contact (send proof).\n3. Admin verifies all accounts manually within 24 hours.\n4. Min 3 referrals to cash out.\n5. Fraud = Instant Ban.`, { parse_mode: 'Markdown' });
 });
 
 // --- STATE & TEXT HANDLERS ---
@@ -139,10 +139,17 @@ bot.on('text', async (ctx) => {
     await supabase.from('users').update({ whatsapp_number: text, state: 'idle' }).eq('telegram_id', telegram_id);
     const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).single();
     
+    // Notify Admins
+    adminIds.forEach(aid => {
+      try {
+        ctx.telegram.sendMessage(aid, `🆕 *New User Pending Verification*\n\nName: ${user.first_name}\nID: \`${telegram_id}\`\nWA: ${text}\n\nUse \`/verify ${telegram_id}\` once they send the screenshot proof.`, { parse_mode: 'Markdown' });
+      } catch(e) {}
+    });
+
     const instruct = `✅ *WhatsApp Saved!*\n\nNow follow these final steps:\n\n` +
       `*Step 2:* Click below to Join our WhatsApp Group.\n` +
       `*Step 3:* Click below to Save My Contact. *Important:* Send me a screenshot on WhatsApp as proof that you saved it!\n\n` +
-      `After you send the proof on WhatsApp, an admin will verify your account here.`;
+      `🕒 *After sending proof, please check back within 24 hours (do steady checks to see that you have been verified).* An admin will activate your account here soon!`;
     
     const links = Markup.inlineKeyboard([
       [Markup.button.url('📱 Join Group', settings.group_link)],
@@ -178,23 +185,28 @@ bot.on('text', async (ctx) => {
       const { data: list } = await supabase.from('users').select('*').order('created_at', { ascending: false });
       if (!list || list.length === 0) return ctx.reply('No users.');
       let msg = list.map(u => `${u.is_verified ? '✅' : '⏳'} *${u.first_name}*\nID: \`${u.telegram_id}\` | WA: ${u.whatsapp_number || 'N/A'}\nRefs: ${u.total_referrals} | Earned: ₦${u.balance}`).join('\n\n');
-      // Truncate if too long for Telegram
       if (msg.length > 4000) msg = msg.substring(0, 3900) + '... (List too long)';
       return ctx.reply(`👥 *User Directory*\n\n${msg}`, { parse_mode: 'Markdown' });
     }
     if (text.startsWith('/verify ')) {
-      const uid = parseInt(text.split(' ')[1]);
+      const uid_str = text.split(' ')[1];
+      if (!uid_str) return ctx.reply('Usage: /verify <telegram_id>');
+      const uid = parseInt(uid_str);
       const { data: target } = await supabase.from('users').select('*').eq('telegram_id', uid).single();
       if (target && !target.is_verified) {
         const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
         await supabase.from('users').update({ is_verified: true }).eq('telegram_id', uid);
         if (target.referred_by) {
           const { data: ref } = await supabase.from('users').select('*').eq('telegram_id', target.referred_by).single();
-          await supabase.from('users').update({ balance: ref.balance + settings.reward_amount, total_referrals: ref.total_referrals + 1 }).eq('telegram_id', target.referred_by);
-          try { ctx.telegram.sendMessage(target.referred_by, `🎉 Your referral ${target.first_name} verified! ₦${settings.reward_amount} added.`, { parse_mode: 'Markdown' }); } catch(e) {}
+          if (ref) {
+            await supabase.from('users').update({ balance: ref.balance + settings.reward_amount, total_referrals: ref.total_referrals + 1 }).eq('telegram_id', target.referred_by);
+            try { ctx.telegram.sendMessage(target.referred_by, `🎉 Your referral ${target.first_name} verified! ₦${settings.reward_amount} added.`, { parse_mode: 'Markdown' }); } catch(e) {}
+          }
         }
         try { ctx.telegram.sendMessage(uid, '🎊 *Account Verified!* Start referring now.', mainMenu); } catch(e) {}
         return ctx.reply(`✅ User \`${uid}\` verified.`);
+      } else {
+        return ctx.reply('User not found or already verified.');
       }
     }
     if (text.startsWith('/setreward ')) {
@@ -204,7 +216,7 @@ bot.on('text', async (ctx) => {
     }
     if (text.startsWith('/setlink ')) {
       const parts = text.split(' ');
-      const type = parts[1]; // 'group' or 'contact'
+      const type = parts[1];
       const url = parts[2];
       if (type === 'group') await supabase.from('settings').update({ group_link: url }).eq('id', 1);
       else if (type === 'contact') await supabase.from('settings').update({ contact_link: url }).eq('id', 1);
