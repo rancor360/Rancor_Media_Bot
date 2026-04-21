@@ -1,0 +1,44 @@
+-- 1. Create the 'users' table if it doesn't exist
+CREATE TABLE IF NOT EXISTS users (
+    telegram_id BIGINT PRIMARY KEY,
+    username TEXT,
+    first_name TEXT,
+    referred_by BIGINT REFERENCES users(telegram_id),
+    balance INTEGER DEFAULT 0,
+    total_referrals INTEGER DEFAULT 0,
+    is_verified BOOLEAN DEFAULT FALSE,
+    is_banned BOOLEAN DEFAULT FALSE,
+    state TEXT DEFAULT 'idle',
+    whatsapp_number TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Add columns to 'users' if they are missing (for safety)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_number TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;
+
+-- 3. Create the 'payout_requests' table
+CREATE TABLE IF NOT EXISTS payout_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    telegram_id BIGINT REFERENCES users(telegram_id),
+    amount INTEGER NOT NULL,
+    bank_details TEXT NOT NULL,
+    status TEXT DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 4. Create the 'settings' table
+CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    secret_code TEXT NOT NULL DEFAULT 'RANCOR77',
+    reward_amount INTEGER DEFAULT 150,
+    whatsapp_link TEXT DEFAULT 'https://chat.whatsapp.com/K0W0hfLP2t09woNLfX8mH6?mode=gi_t'
+);
+
+-- 5. Add columns to 'settings' if missing
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS whatsapp_link TEXT DEFAULT 'https://chat.whatsapp.com/K0W0hfLP2t09woNLfX8mH6?mode=gi_t';
+
+-- 6. Insert initial settings row
+INSERT INTO settings (id, secret_code, reward_amount, whatsapp_link) 
+VALUES (1, 'RANCOR77', 150, 'https://chat.whatsapp.com/K0W0hfLP2t09woNLfX8mH6?mode=gi_t')
+ON CONFLICT (id) DO NOTHING;
