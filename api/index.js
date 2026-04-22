@@ -160,22 +160,22 @@ bot.hears('💸 Redeem', async (ctx) => {
   ctx.reply('🏦 *Bank Details Request*\n\nPlease send your bank details (Bank Name, Account #, Account Name):', { parse_mode: 'Markdown', ...cancelInline, reply_markup: { remove_keyboard: true } });
 });
 
-bot.hears('📜 Policies', async (ctx) => {
+bot.hears(/Policies/i, async (ctx) => {
   const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).single();
   
-  const msg = `📜 *Rancor Media Policies & Guide*\n\n` +
-    `🚀 *How it Works:*\n` +
+  const msg = `<b>📜 Rancor Media Policies & Guide</b>\n\n` +
+    `🚀 <b>How it Works:</b>\n` +
     `1️⃣ Share your link from the "Referral Link" button.\n` +
     `2️⃣ Your friend must join the group and save our contact.\n` +
     `3️⃣ Send a screenshot proof to an admin (via WhatsApp or here).\n` +
-    `4️⃣ Earn *₦${settings.reward_amount}* for every friend who gets verified!\n\n` +
-    `⚖️ *Rules:*\n` +
+    `4️⃣ Earn <b>₦${settings.reward_amount}</b> for every friend who gets verified!\n\n` +
+    `⚖️ <b>Rules:</b>\n` +
     `• One account per person only.\n` +
     `• Min 3 referrals required to cash out.\n` +
     `• Fraud or duplicate accounts = Instant Ban.\n\n` +
-    `🔗 *Group Link:* ${settings.group_link}`;
+    `🔗 <b>Group Link:</b> ${settings.group_link}`;
 
-  ctx.reply(msg, { parse_mode: 'Markdown' });
+  ctx.reply(msg, { parse_mode: 'HTML' });
 });
 
 // --- STATE & TEXT HANDLERS ---
@@ -256,7 +256,7 @@ bot.on('text', async (ctx) => {
   const telegram_id = ctx.from.id;
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
 
-  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📜 Policies'].includes(text)) return;
+  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem'].includes(text) || /Policies/i.test(text)) return;
 
   // 1. Awaiting WhatsApp -> Step 2 & 3
   if (user.state === 'awaiting_whatsapp') {
