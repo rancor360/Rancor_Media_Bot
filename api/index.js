@@ -246,6 +246,24 @@ bot.hears('📢 Broadcast', async (ctx) => {
   ctx.reply('📢 <b>Broadcast System</b>\n\nPlease send the message you want to broadcast to ALL verified users:', { parse_mode: 'HTML', ...Markup.keyboard([['❌ Cancel']]).resize() });
 });
 
+// Admin state triggers
+const stateMap = {
+  '💰 Set Reward': 'admin_awaiting_reward',
+  '📱 Set Group Link': 'admin_awaiting_group_link',
+  '👤 Set Contact Link': 'admin_awaiting_contact_link',
+  '✅ Verify by ID': 'admin_awaiting_verify_id',
+  '🚫 Ban User': 'admin_awaiting_ban_id',
+  '💸 Approve Payout': 'admin_awaiting_approve_id'
+};
+
+Object.keys(stateMap).forEach(key => {
+  bot.hears(key, async (ctx) => {
+    if (!ctx.isAdmin) return;
+    await supabase.from('users').update({ state: stateMap[key] }).eq('telegram_id', ctx.from.id);
+    return ctx.reply(`Please enter the new ${key.split('Set ')[1] || 'value'}:`, Markup.keyboard([['❌ Cancel']]).resize());
+  });
+});
+
 // --- ACTION HANDLERS ---
 
 bot.action('cancel_action', async (ctx) => {
@@ -380,6 +398,29 @@ bot.on('text', async (ctx) => {
        await supabase.from('settings').update({ contact_link: text }).eq('id', 1);
        await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
        return ctx.reply('✅ Contact Link Updated.', adminMenu);
+    }
+
+    if (user.state === 'admin_awaiting_verify_id') {
+       const uid = parseInt(text);
+       const { data: target } = await supabase.from('users').select('*').eq('telegram_id', uid).single();
+       if (!target) return ctx.reply('❌ User not found.');
+       const { data: s } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
+       await supabase.rpc('verify_user_and_reward', { u_id: uid, r_id: target.referred_by || null, amt: parseInt(s.reward_amount) });
+       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
+       try { await ctx.telegram.sendMessage(uid, '🎊 Account Verified!', mainMenu); } catch(e) {}
+       return ctx.reply('✅ User Verified.', adminMenu);
+    }
+
+    if (user.state === 'admin_awaiting_ban_id') {
+       await supabase.from('users').update({ is_banned: true, state: 'idle' }).eq('telegram_id', parseInt(text));
+       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
+       return ctx.reply('🚫 User Banned.', adminMenu);
+    }
+
+    if (user.state === 'admin_awaiting_approve_id') {
+       await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', parseInt(text));
+       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
+       return ctx.reply('✅ Payout Approved.', adminMenu);
     }
   }
 });
