@@ -142,7 +142,7 @@ bot.hears('🔗 Referral Link', async (ctx) => {
   ctx.reply(`🔗 *Your Referral Link:*\n\n\`${link}\`\n\nShare this! You earn ₦${settings.reward_amount} for every friend who joins, saves my contact, and gets verified.`, { parse_mode: 'Markdown' });
 });
 
-bot.hears('ℹ️ How It Works', async (ctx) => {
+bot.hears(/ℹ️ How It Works/, async (ctx) => {
   const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).single();
   const msg = `🚀 *How Rancor Media Works*\n\n` +
     `1️⃣ *Refer:* Share your unique referral link with friends.\n` +
@@ -241,7 +241,7 @@ bot.on('text', async (ctx) => {
   const telegram_id = ctx.from.id;
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
 
-  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📜 Policies', 'ℹ️ How It Works'].includes(text)) return;
+  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📜 Policies'].includes(text) || /ℹ️ How It Works/.test(text)) return;
 
   // 1. Awaiting WhatsApp -> Step 2 & 3
   if (user.state === 'awaiting_whatsapp') {
