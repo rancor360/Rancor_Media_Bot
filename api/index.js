@@ -29,8 +29,9 @@ const mainMenu = Markup.keyboard([
 
 const adminMenu = Markup.keyboard([
   ['⏳ Verifications', '💸 Payout Queue'],
-  ['👥 User Directory', '⚙️ Settings'],
-  ['➕ More Tools', '🏠 Home']
+  ['👥 User Directory', '📥 Download Report'],
+  ['⚙️ Settings', '➕ More Tools'],
+  ['🏠 Home']
 ]).resize();
 
 const adminMoreMenu = Markup.keyboard([
@@ -257,7 +258,7 @@ bot.on('text', async (ctx) => {
   const telegram_id = ctx.from.id;
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
 
-  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem'].includes(text) || /Policies/i.test(text)) return;
+  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📥 Download Report'].includes(text) || /Policies/i.test(text)) return;
 
   // 1. Awaiting WhatsApp -> Step 2 & 3
   if (user.state === 'awaiting_whatsapp') {
@@ -424,6 +425,20 @@ bot.on('text', async (ctx) => {
       if (!reqs || reqs.length === 0) return ctx.reply('No payouts.');
       let msg = reqs.map(r => `ID: \`${r.id}\`\nUser: ${r.users.first_name}\nAmt: ₦${r.amount}\nDetails: ${r.bank_details}`).join('\n\n');
       return ctx.reply(msg, { parse_mode: 'Markdown' });
+    }
+
+    if (text === '📥 Download Report') {
+      const { data: users } = await supabase.from('users').select('*').order('created_at', { ascending: false });
+      const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
+      
+      let csv = 'Telegram_ID,First_Name,Username,WhatsApp,Referred_By,Total_Refs,Balance,Verified,Banned,Joined\n';
+      users.forEach(u => {
+        const bal = (u.total_referrals || 0) * settings.reward_amount;
+        csv += `${u.telegram_id},"${u.first_name || ''}","${u.username || ''}","${u.whatsapp_number || ''}",${u.referred_by || ''},${u.total_referrals || 0},${bal},${u.is_verified},${u.is_banned},"${new Date(u.created_at).toLocaleDateString()}"\n`;
+      });
+
+      const buffer = Buffer.from(csv, 'utf-8');
+      return ctx.replyWithDocument({ source: buffer, filename: `Rancor_User_Report_${new Date().toISOString().split('T')[0]}.csv` });
     }
 
     // D. Trigger Action States
