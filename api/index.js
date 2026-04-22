@@ -142,8 +142,10 @@ bot.hears('🔗 Referral Link', async (ctx) => {
   ctx.reply(`🔗 *Your Referral Link:*\n\n\`${link}\`\n\nShare this! You earn ₦${settings.reward_amount} for every friend who joins, saves my contact, and gets verified.`, { parse_mode: 'Markdown' });
 });
 
-bot.hears(/ℹ️ How It Works/, async (ctx) => {
-  const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).single();
+bot.hears(/How It Works/i, async (ctx) => {
+  const { data: settings, error } = await supabase.from('settings').select('*').eq('id', 1).single();
+  if (error || !settings) return ctx.reply('⚠️ Error fetching settings. Please notify an admin.');
+  
   const msg = `🚀 *How Rancor Media Works*\n\n` +
     `1️⃣ *Refer:* Share your unique referral link with friends.\n` +
     `2️⃣ *Verify:* Your friend must join our group and save our contact.\n` +
@@ -219,17 +221,23 @@ bot.action(/^verify_user_(\d+)$/, async (ctx) => {
   if (target && !target.is_verified) {
     const { data: s } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
     
-    // Use RPC for transaction safety
+    // Use RPC for transaction safety - pass null explicitly if r_id is missing
     const { error } = await supabase.rpc('verify_user_and_reward', {
       u_id: uid,
-      r_id: target.referred_by,
-      amt: s.reward_amount
+      r_id: target.referred_by || null,
+      amt: parseInt(s.reward_amount)
     });
 
-    if (error) return ctx.answerCbQuery('❌ Error activating user.');
+    if (error) {
+      console.error('RPC Error:', error);
+      return ctx.answerCbQuery('❌ Error activating user.');
+    }
 
-    try { ctx.telegram.sendMessage(uid, '🎊 *Account Verified!* Your referral program is now active.', mainMenu); } catch(e) {}
-    await ctx.editMessageCaption(`✅ *User Verified*\nVerified by: ${ctx.from.first_name}`, { parse_mode: 'Markdown' });
+    try { 
+      await ctx.telegram.sendMessage(uid, `🎊 *Account Verified!*\n\nYou've been activated. You can now earn ₦${s.reward_amount} for every verified referral.`, mainMenu); 
+    } catch(e) {}
+    
+    await ctx.editMessageCaption(`✅ *User Verified*\nVerified by: ${ctx.from.first_name}\nReward: ₦${s.reward_amount}`, { parse_mode: 'Markdown' });
     ctx.answerCbQuery('User Activated!');
   } else {
     ctx.answerCbQuery('User already verified or not found.');
