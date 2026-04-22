@@ -19,6 +19,15 @@ bot.catch((err, ctx) => {
 
 const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim()));
 
+// --- GLOBAL BUTTON LIST (For exclusion) ---
+const allButtons = [
+  '📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📜 Policies',
+  '⏳ Verifications', '💸 Payout Queue', '👥 User Directory', '📥 Download Report',
+  '⚙️ Settings', '➕ More Tools', '🏠 Home', '✅ Verify by ID', '🚫 Ban User',
+  '💰 Set Reward', '💸 Approve Payout', '📱 Set Group Link', '👤 Set Contact Link',
+  '⬅️ Back', '❌ Cancel'
+];
+
 // --- KEYBOARDS ---
 
 const mainMenu = Markup.keyboard([
@@ -308,7 +317,7 @@ bot.on('text', async (ctx) => {
   const telegram_id = ctx.from.id;
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
 
-  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem'].includes(text) || /Policies/i.test(text)) return;
+  if (!user || allButtons.includes(text) || /Policies/i.test(text)) return;
 
   // 1. Awaiting WhatsApp -> Step 2 & 3
   if (user.state === 'awaiting_whatsapp') {
@@ -318,7 +327,7 @@ bot.on('text', async (ctx) => {
     // Notify Admins
     adminIds.forEach(aid => {
       try {
-        ctx.telegram.sendMessage(aid, `🆕 *New User Pending Verification*\n\nName: ${user.first_name}\nID: \`${telegram_id}\`\nWA: ${text}\n\nUse \`/verify ${telegram_id}\` once they send the screenshot proof.`, { parse_mode: 'Markdown' });
+        ctx.telegram.sendMessage(aid, `🆕 <b>New User Pending Verification</b>\n\nName: ${user.first_name}\nID: <code>${telegram_id}</code>\nWA: ${text}\n\nUse <code>/verify ${telegram_id}</code> once they send the screenshot proof.`, { parse_mode: 'HTML' });
       } catch(e) {}
     });
 
@@ -339,11 +348,11 @@ bot.on('text', async (ctx) => {
   if (user.state === 'awaiting_bank') {
     const { data: existing } = await supabase.from('payout_requests').select('telegram_id').eq('bank_details', text).neq('telegram_id', telegram_id).limit(1);
     if (existing && existing.length > 0) {
-       adminIds.forEach(aid => { ctx.telegram.sendMessage(aid, `🚨 *FRAUD ALERT*\nUser ${telegram_id} using bank account from User ${existing[0].telegram_id}.`); });
+       adminIds.forEach(aid => { ctx.telegram.sendMessage(aid, `🚨 <b>FRAUD ALERT</b>\nUser <code>${telegram_id}</code> using bank account from User <code>${existing[0].telegram_id}</code>.`, { parse_mode: 'HTML' }); });
     }
     await supabase.from('payout_requests').insert({ telegram_id, amount: user.balance, bank_details: text });
     await supabase.from('users').update({ state: 'idle', balance: 0 }).eq('telegram_id', telegram_id);
-    return ctx.reply('✅ *Request Submitted!* Admin will review.', mainMenu);
+    return ctx.reply('✅ <b>Request Submitted!</b> Admin will review.', { parse_mode: 'HTML', ...mainMenu });
   }
 
   // 3. Admin Handling Logic
@@ -454,27 +463,27 @@ bot.on('text', async (ctx) => {
 
     if (text === '⚙️ Settings') {
       const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).single();
-      return ctx.reply(`⚙️ *Bot Settings*\n\n💰 Reward: ₦${settings.reward_amount}\n📱 Group: ${settings.group_link}\n👤 Contact: ${settings.contact_link}`, adminMenu);
+      return ctx.reply(`⚙️ <b>Bot Settings</b>\n\n💰 Reward: ₦${settings.reward_amount}\n📱 Group: ${settings.group_link}\n👤 Contact: ${settings.contact_link}`, { parse_mode: 'HTML', ...adminMenu });
     }
 
     if (text === '⏳ Verifications') {
       const { data: list } = await supabase.from('users').select('*').eq('is_verified', false).not('whatsapp_number', 'is', null);
       if (!list || list.length === 0) return ctx.reply('No pending verifications.');
-      let msg = list.map(u => `👤 ${u.first_name}\nID: \`${u.telegram_id}\`\nWA: ${u.whatsapp_number}`).join('\n\n');
-      return ctx.reply(`⏳ *Verification Queue*\n\n${msg}`, { parse_mode: 'Markdown' });
+      let msg = list.map(u => `👤 ${u.first_name}\nID: <code>${u.telegram_id}</code>\nWA: ${u.whatsapp_number}`).join('\n\n');
+      return ctx.reply(`⏳ <b>Verification Queue</b>\n\n${msg}`, { parse_mode: 'HTML' });
     }
 
     if (text === '👥 User Directory') {
       const { data: list } = await supabase.from('users').select('*').order('created_at', { ascending: false }).limit(20);
-      let msg = list.map(u => `${u.is_verified ? '✅' : '⏳'} *${u.first_name}* (\`${u.telegram_id}\`)\nRefs: ${u.total_referrals} | Earned: ₦${u.balance}`).join('\n\n');
-      return ctx.reply(`👥 *Recent Users*\n\n${msg}`, { parse_mode: 'Markdown' });
+      let msg = list.map(u => `${u.is_verified ? '✅' : '⏳'} <b>${u.first_name}</b> (<code>${u.telegram_id}</code>)\nRefs: ${u.total_referrals} | Earned: ₦${u.balance}`).join('\n\n');
+      return ctx.reply(`👥 <b>Recent Users</b>\n\n${msg}`, { parse_mode: 'HTML' });
     }
 
     if (text === '💸 Payout Queue') {
       const { data: reqs } = await supabase.from('payout_requests').select('*, users(first_name, whatsapp_number)').eq('status', 'pending');
       if (!reqs || reqs.length === 0) return ctx.reply('No payouts.');
-      let msg = reqs.map(r => `ID: \`${r.id}\`\nUser: ${r.users.first_name}\nAmt: ₦${r.amount}\nDetails: ${r.bank_details}`).join('\n\n');
-      return ctx.reply(msg, { parse_mode: 'Markdown' });
+      let msg = reqs.map(r => `ID: <code>${r.id}</code>\nUser: ${r.users.first_name}\nAmt: ₦${r.amount}\nDetails: ${r.bank_details}`).join('\n\n');
+      return ctx.reply(msg, { parse_mode: 'HTML' });
     }
 
     // D. Trigger Action States
