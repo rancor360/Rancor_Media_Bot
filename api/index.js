@@ -173,7 +173,8 @@ bot.hears(/Policies/i, async (ctx) => {
     `• One account per person only.\n` +
     `• Min 3 referrals required to cash out.\n` +
     `• Fraud or duplicate accounts = Instant Ban.\n\n` +
-    `🔗 <b>Group Link:</b> ${settings.group_link}`;
+    `🔗 <b>Group Link:</b> ${settings.group_link}\n` +
+    `👤 <b>Admin Contact:</b> ${settings.contact_link}`;
 
   ctx.reply(msg, { parse_mode: 'HTML' });
 });
