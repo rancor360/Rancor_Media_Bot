@@ -22,8 +22,8 @@ const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.
 // --- KEYBOARDS ---
 
 const mainMenu = Markup.keyboard([
-  ['📊 My Stats', '💰 Balance'],
-  ['🔗 Referral Link', '💸 Redeem'],
+  ['My Stats', '💰 Balance'],
+  ['🔗 Referral Link', 'Redeem'],
   ['Policies', 'How It Works']
 ]).resize();
 
@@ -117,7 +117,7 @@ bot.start(async (ctx) => {
 
 // --- MENU HANDLERS ---
 
-bot.hears('📊 My Stats', async (ctx) => {
+bot.hears('My Stats', async (ctx) => {
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', ctx.from.id).single();
   if (!user || !user.is_verified) return ctx.reply('⚠️ Account not yet verified. Please check back within 24 hours (do steady checks to see that you have been verified).');
 
@@ -160,7 +160,7 @@ bot.hears('How It Works', async (ctx) => {
   ctx.reply(msg, { parse_mode: 'Markdown' });
 });
 
-bot.hears('💸 Redeem', async (ctx) => {
+bot.hears('Redeem', async (ctx) => {
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', ctx.from.id).single();
   if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified.');
 
@@ -253,7 +253,7 @@ bot.on('text', async (ctx) => {
   const telegram_id = ctx.from.id;
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
 
-  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', 'Policies', 'How It Works'].includes(text)) return;
+  if (!user || ['My Stats', '💰 Balance', '🔗 Referral Link', 'Redeem', 'Policies', 'How It Works'].includes(text)) return;
 
   // 1. Awaiting WhatsApp -> Step 2 & 3
   if (user.state === 'awaiting_whatsapp') {
