@@ -22,9 +22,9 @@ const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.
 // --- KEYBOARDS ---
 
 const mainMenu = Markup.keyboard([
-  ['My Stats', '💰 Balance'],
-  ['🔗 Referral Link', 'Redeem'],
-  ['Policies', 'How It Works']
+  ['📊 My Stats', '💰 Balance'],
+  ['🔗 Referral Link', '💸 Redeem'],
+  ['📜 Policies']
 ]).resize();
 
 const adminMenu = Markup.keyboard([
@@ -117,7 +117,7 @@ bot.start(async (ctx) => {
 
 // --- MENU HANDLERS ---
 
-bot.hears('My Stats', async (ctx) => {
+bot.hears('📊 My Stats', async (ctx) => {
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', ctx.from.id).single();
   if (!user || !user.is_verified) return ctx.reply('⚠️ Account not yet verified. Please check back within 24 hours (do steady checks to see that you have been verified).');
 
@@ -146,33 +146,36 @@ bot.hears('🔗 Referral Link', async (ctx) => {
   ctx.reply(`🔗 *Your Referral Link:*\n\n\`${link}\`\n\nShare this! You earn ₦${settings.reward_amount} for every friend who joins, saves my contact, and gets verified.`, { parse_mode: 'Markdown' });
 });
 
-bot.hears('How It Works', async (ctx) => {
-  const { data: settings, error } = await supabase.from('settings').select('*').eq('id', 1).single();
-  if (error || !settings) return ctx.reply('⚠️ Error fetching settings. Please notify an admin.');
-  
-  const msg = `🚀 *How Rancor Media Works*\n\n` +
-    `1️⃣ *Refer:* Share your unique referral link with friends.\n` +
-    `2️⃣ *Verify:* Your friend must join our group and save our contact.\n` +
-    `3️⃣ *Proof:* They must send a screenshot of the saved contact to our WhatsApp.\n` +
-    `4️⃣ *Earn:* Once an admin verifies them, you get *₦${settings.reward_amount}* added to your balance!\n\n` +
-    `💰 *Cashout:* You can redeem your earnings once you have at least *3 verified referrals*.\n\n` +
-    `🔗 *Group Link:* ${settings.group_link}`;
-  ctx.reply(msg, { parse_mode: 'Markdown' });
-});
-
-bot.hears('Redeem', async (ctx) => {
+bot.hears('💸 Redeem', async (ctx) => {
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', ctx.from.id).single();
   if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified.');
 
   if (user.total_referrals < 3) return ctx.reply('⚠️ Min 3 verified referrals required to redeem.', { parse_mode: 'Markdown' });
-  if (user.balance <= 0) return ctx.reply('⚠️ Your balance is ₦0.');
+  
+  const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
+  const currentBalance = (user.total_referrals || 0) * settings.reward_amount;
+  if (currentBalance <= 0) return ctx.reply('⚠️ Your balance is ₦0.');
 
   await supabase.from('users').update({ state: 'awaiting_bank' }).eq('telegram_id', ctx.from.id);
   ctx.reply('🏦 *Bank Details Request*\n\nPlease send your bank details (Bank Name, Account #, Account Name):', { parse_mode: 'Markdown', ...cancelInline, reply_markup: { remove_keyboard: true } });
 });
 
-bot.hears('Policies', (ctx) => {
-  ctx.reply(`📜 *Rancor Media Rules*\n\n1. One account per person.\n2. You must join the group AND save our contact (send proof).\n3. Admin verifies all accounts manually within 24 hours.\n4. Min 3 referrals to cash out.\n5. Fraud = Instant Ban.`, { parse_mode: 'Markdown' });
+bot.hears('📜 Policies', async (ctx) => {
+  const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).single();
+  
+  const msg = `📜 *Rancor Media Policies & Guide*\n\n` +
+    `🚀 *How it Works:*\n` +
+    `1️⃣ Share your link from the "Referral Link" button.\n` +
+    `2️⃣ Your friend must join the group and save our contact.\n` +
+    `3️⃣ Send a screenshot proof to an admin (via WhatsApp or here).\n` +
+    `4️⃣ Earn *₦${settings.reward_amount}* for every friend who gets verified!\n\n` +
+    `⚖️ *Rules:*\n` +
+    `• One account per person only.\n` +
+    `• Min 3 referrals required to cash out.\n` +
+    `• Fraud or duplicate accounts = Instant Ban.\n\n` +
+    `🔗 *Group Link:* ${settings.group_link}`;
+
+  ctx.reply(msg, { parse_mode: 'Markdown' });
 });
 
 // --- STATE & TEXT HANDLERS ---
@@ -253,7 +256,7 @@ bot.on('text', async (ctx) => {
   const telegram_id = ctx.from.id;
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
 
-  if (!user || ['My Stats', '💰 Balance', '🔗 Referral Link', 'Redeem', 'Policies', 'How It Works'].includes(text)) return;
+  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📜 Policies'].includes(text)) return;
 
   // 1. Awaiting WhatsApp -> Step 2 & 3
   if (user.state === 'awaiting_whatsapp') {
