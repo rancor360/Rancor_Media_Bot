@@ -20,6 +20,12 @@ const mainMenu = Markup.keyboard([
   ['📜 Policies']
 ]).resize();
 
+const adminMenu = Markup.keyboard([
+  ['⏳ Pending Verifications', '👥 User Directory'],
+  ['💸 Payout Queue', '⚙️ Bot Settings'],
+  ['👤 Back to User Menu']
+]).resize();
+
 const cancelInline = Markup.inlineKeyboard([
   [Markup.button.callback('❌ Cancel Action', 'cancel_action')]
 ]);
@@ -173,20 +179,36 @@ bot.on('text', async (ctx) => {
   // 3. Admin Commands
   if (adminIds.includes(telegram_id)) {
     if (text === '/admin') {
-      return ctx.reply(`⚙️ *Full Admin Panel*\n\n• \`/unverified\` — Queue for verification.\n• \`/verify <ID>\` — Activate user.\n• \`/listusers\` — See all users & stats.\n• \`/payouts\` — Pending payouts.\n• \`/approve <ID>\` — Complete payout.\n• \`/setlink group <url>\`\n• \`/setlink contact <url>\`\n• \`/setreward <amt>\`\n• \`/ban <ID>\``);
+      return ctx.reply('⚙️ *Admin Panel Activated*\n\nUse the buttons below to manage the bot.', adminMenu);
     }
-    if (text === '/unverified') {
+
+    if (text === '👤 Back to User Menu') {
+      return ctx.reply('🏠 *Returned to User Menu*', mainMenu);
+    }
+
+    if (text === '⚙️ Bot Settings') {
+      const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).single();
+      return ctx.reply(`⚙️ *Current Bot Settings*\n\n💰 *Reward:* ₦${settings.reward_amount}\n📱 *Group:* ${settings.group_link}\n👤 *Contact:* ${settings.contact_link}\n\nUse \`/setreward\`, \`/setlink group\`, or \`/setlink contact\` to change these.`);
+    }
+
+    if (text === '/unverified' || text === '⏳ Pending Verifications') {
       const { data: list } = await supabase.from('users').select('*').eq('is_verified', false).not('whatsapp_number', 'is', null);
       if (!list || list.length === 0) return ctx.reply('No pending verifications.');
       let msg = list.map(u => `👤 ${u.first_name}\nID: \`${u.telegram_id}\`\nWA: ${u.whatsapp_number}`).join('\n\n');
       return ctx.reply(`⏳ *Verification Queue*\n\n${msg}`, { parse_mode: 'Markdown' });
     }
-    if (text === '/listusers') {
+    if (text === '/listusers' || text === '👥 User Directory') {
       const { data: list } = await supabase.from('users').select('*').order('created_at', { ascending: false });
       if (!list || list.length === 0) return ctx.reply('No users.');
       let msg = list.map(u => `${u.is_verified ? '✅' : '⏳'} *${u.first_name}*\nID: \`${u.telegram_id}\` | WA: ${u.whatsapp_number || 'N/A'}\nRefs: ${u.total_referrals} | Earned: ₦${u.balance}`).join('\n\n');
       if (msg.length > 4000) msg = msg.substring(0, 3900) + '... (List too long)';
       return ctx.reply(`👥 *User Directory*\n\n${msg}`, { parse_mode: 'Markdown' });
+    }
+    if (text === '/payouts' || text === '💸 Payout Queue') {
+      const { data: reqs } = await supabase.from('payout_requests').select('*, users(first_name, whatsapp_number)').eq('status', 'pending');
+      if (!reqs || reqs.length === 0) return ctx.reply('No payouts.');
+      let msg = reqs.map(r => `ID: \`${r.id}\`\nUser: ${r.users.first_name} | WA: ${r.users.whatsapp_number}\nAmt: ₦${r.amount}\nDetails: ${r.bank_details}`).join('\n\n');
+      return ctx.reply(msg, { parse_mode: 'Markdown' });
     }
     if (text.startsWith('/verify ')) {
       const uid_str = text.split(' ')[1];
