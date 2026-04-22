@@ -24,7 +24,7 @@ const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.
 const mainMenu = Markup.keyboard([
   ['📊 My Stats', '💰 Balance'],
   ['🔗 Referral Link', '💸 Redeem'],
-  ['📜 Policies', 'ℹ️ How It Works']
+  ['📜 Policies', 'How It Works']
 ]).resize();
 
 const adminMenu = Markup.keyboard([
@@ -127,14 +127,18 @@ bot.hears('📊 My Stats', async (ctx) => {
 });
 
 bot.hears('💰 Balance', async (ctx) => {
-  const { data: user } = await supabase.from('users').select('balance, is_verified').eq('telegram_id', ctx.from.id).single();
-  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified. Please check back within 24 hours (do steady checks to see that you have been verified).');
-  ctx.reply(`💰 *Current Balance:* ₦${user.balance || 0}`, { parse_mode: 'Markdown' });
+  const { data: user } = await supabase.from('users').select('total_referrals, is_verified').eq('telegram_id', ctx.from.id).single();
+  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not yet verified.');
+
+  const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
+  const currentBalance = (user.total_referrals || 0) * settings.reward_amount;
+  
+  ctx.reply(`💰 *Current Balance:* ₦${currentBalance}\n\n_(Calculated at the current rate of ₦${settings.reward_amount} per referral)_`, { parse_mode: 'Markdown' });
 });
 
 bot.hears('🔗 Referral Link', async (ctx) => {
   const { data: user } = await supabase.from('users').select('is_verified').eq('telegram_id', ctx.from.id).single();
-  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified. Please check back within 24 hours (do steady checks to see that you have been verified).');
+  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified.');
 
   const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
   const botInfo = await ctx.telegram.getMe();
@@ -142,7 +146,7 @@ bot.hears('🔗 Referral Link', async (ctx) => {
   ctx.reply(`🔗 *Your Referral Link:*\n\n\`${link}\`\n\nShare this! You earn ₦${settings.reward_amount} for every friend who joins, saves my contact, and gets verified.`, { parse_mode: 'Markdown' });
 });
 
-bot.hears(/How It Works/i, async (ctx) => {
+bot.hears('How It Works', async (ctx) => {
   const { data: settings, error } = await supabase.from('settings').select('*').eq('id', 1).single();
   if (error || !settings) return ctx.reply('⚠️ Error fetching settings. Please notify an admin.');
   
@@ -249,7 +253,7 @@ bot.on('text', async (ctx) => {
   const telegram_id = ctx.from.id;
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
 
-  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📜 Policies'].includes(text) || /ℹ️ How It Works/.test(text)) return;
+  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📜 Policies', 'How It Works'].includes(text)) return;
 
   // 1. Awaiting WhatsApp -> Step 2 & 3
   if (user.state === 'awaiting_whatsapp') {
