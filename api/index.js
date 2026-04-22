@@ -25,7 +25,7 @@ const allButtons = [
   '⏳ Verifications', '💸 Payout Queue', '👥 User Directory', '📥 Download Report',
   '⚙️ Settings', '➕ More Tools', '🏠 Home', '✅ Verify by ID', '🚫 Ban User',
   '💰 Set Reward', '💸 Approve Payout', '📱 Set Group Link', '👤 Set Contact Link',
-  '⬅️ Back', '❌ Cancel', '📢 Broadcast'
+  '⬅️ Back', '📢 Broadcast'
 ];
 
 // --- KEYBOARDS ---
@@ -195,6 +195,14 @@ bot.hears('/admin', (ctx) => ctx.isAdmin && ctx.reply('⚙️ <b>Admin Panel</b>
 bot.hears('⬅️ Back', (ctx) => ctx.isAdmin && ctx.reply('⚙️ <b>Admin Panel</b>', { parse_mode: 'HTML', ...adminMenu }));
 bot.hears('🏠 Home', (ctx) => ctx.reply('🏠 <b>User Menu</b>', { parse_mode: 'HTML', ...mainMenu }));
 bot.hears('➕ More Tools', (ctx) => ctx.isAdmin && ctx.reply('🛠 <b>Advanced Tools</b>', { parse_mode: 'HTML', ...adminMoreMenu }));
+
+bot.hears('❌ Cancel', async (ctx) => {
+  await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', ctx.from.id);
+  if (ctx.isAdmin) {
+    return ctx.reply('❌ Action canceled.', { parse_mode: 'HTML', ...adminMenu });
+  }
+  return ctx.reply('❌ Action canceled.', { parse_mode: 'HTML', ...mainMenu });
+});
 
 bot.hears('⚙️ Settings', async (ctx) => {
   if (!ctx.isAdmin) return;
