@@ -25,7 +25,7 @@ const allButtons = [
   '⏳ Verifications', '💸 Payout Queue', '👥 User Directory', '📥 Download Report',
   '⚙️ Settings', '➕ More Tools', '🏠 Home', '✅ Verify by ID', '🚫 Ban User',
   '💰 Set Reward', '💸 Approve Payout', '📱 Set Group Link', '👤 Set Contact Link',
-  '⬅️ Back', '❌ Cancel'
+  '⬅️ Back', '❌ Cancel', '📢 Broadcast'
 ];
 
 // --- KEYBOARDS ---
@@ -47,7 +47,7 @@ const adminMoreMenu = Markup.keyboard([
   ['✅ Verify by ID', '🚫 Ban User'],
   ['💰 Set Reward', '💸 Approve Payout'],
   ['📱 Set Group Link', '👤 Set Contact Link'],
-  ['⬅️ Back']
+  ['📢 Broadcast', '⬅️ Back']
 ]).resize();
 
 const cancelInline = Markup.inlineKeyboard([
@@ -240,6 +240,12 @@ bot.hears('📥 Download Report', async (ctx) => {
   return ctx.replyWithDocument({ source: buffer, filename: `Rancor_User_Report_${new Date().toISOString().split('T')[0]}.csv` });
 });
 
+bot.hears('📢 Broadcast', async (ctx) => {
+  if (!ctx.isAdmin) return;
+  await supabase.from('users').update({ state: 'admin_awaiting_broadcast' }).eq('telegram_id', ctx.from.id);
+  ctx.reply('📢 <b>Broadcast System</b>\n\nPlease send the message you want to broadcast to ALL verified users:', { parse_mode: 'HTML', ...Markup.keyboard([['❌ Cancel']]).resize() });
+});
+
 // --- ACTION HANDLERS ---
 
 bot.action('cancel_action', async (ctx) => {
@@ -341,13 +347,40 @@ bot.on('text', async (ctx) => {
       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
       return ctx.reply('Canceled.', adminMenu);
     }
-    // Handle admin state logic (Reward, Links, etc.)
+
+    if (user.state === 'admin_awaiting_broadcast') {
+      const { data: targets } = await supabase.from('users').select('telegram_id').eq('is_verified', true);
+      await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
+      
+      ctx.reply(`🚀 Starting broadcast to ${targets.length} users...`);
+      
+      let count = 0;
+      for (const t of targets) {
+        try {
+          await ctx.telegram.sendMessage(t.telegram_id, `📢 <b>ANNOUNCEMENT</b>\n\n${text}`, { parse_mode: 'HTML' });
+          count++;
+        } catch (e) {}
+      }
+      return ctx.reply(`✅ <b>Broadcast Complete</b>\nSent to ${count} users.`, { parse_mode: 'HTML', ...adminMenu });
+    }
+
     if (user.state === 'admin_awaiting_reward') {
-       await supabase.from('settings').update({ reward_amount: parseInt(text) }).eq('id', 1);
+       await supabase.from('settings').update({ reward_amount: parseInt(text) || 0 }).eq('id', 1);
        await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
        return ctx.reply('✅ Reward Updated.', adminMenu);
     }
-    // ... other admin states ...
+
+    if (user.state === 'admin_awaiting_group_link') {
+       await supabase.from('settings').update({ group_link: text }).eq('id', 1);
+       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
+       return ctx.reply('✅ Group Link Updated.', adminMenu);
+    }
+
+    if (user.state === 'admin_awaiting_contact_link') {
+       await supabase.from('settings').update({ contact_link: text }).eq('id', 1);
+       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
+       return ctx.reply('✅ Contact Link Updated.', adminMenu);
+    }
   }
 });
 
