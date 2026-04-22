@@ -24,7 +24,7 @@ const adminIds = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.
 const mainMenu = Markup.keyboard([
   ['📊 My Stats', '💰 Balance'],
   ['🔗 Referral Link', '💸 Redeem'],
-  ['📜 Policies', 'How It Works']
+  ['Policies', 'How It Works']
 ]).resize();
 
 const adminMenu = Markup.keyboard([
@@ -171,7 +171,7 @@ bot.hears('💸 Redeem', async (ctx) => {
   ctx.reply('🏦 *Bank Details Request*\n\nPlease send your bank details (Bank Name, Account #, Account Name):', { parse_mode: 'Markdown', ...cancelInline, reply_markup: { remove_keyboard: true } });
 });
 
-bot.hears('📜 Policies', (ctx) => {
+bot.hears('Policies', (ctx) => {
   ctx.reply(`📜 *Rancor Media Rules*\n\n1. One account per person.\n2. You must join the group AND save our contact (send proof).\n3. Admin verifies all accounts manually within 24 hours.\n4. Min 3 referrals to cash out.\n5. Fraud = Instant Ban.`, { parse_mode: 'Markdown' });
 });
 
@@ -253,7 +253,7 @@ bot.on('text', async (ctx) => {
   const telegram_id = ctx.from.id;
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
 
-  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📜 Policies', 'How It Works'].includes(text)) return;
+  if (!user || ['📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', 'Policies', 'How It Works'].includes(text)) return;
 
   // 1. Awaiting WhatsApp -> Step 2 & 3
   if (user.state === 'awaiting_whatsapp') {
