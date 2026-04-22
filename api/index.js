@@ -129,11 +129,11 @@ bot.start(async (ctx) => {
 
 bot.hears('📊 My Stats', async (ctx) => {
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', ctx.from.id).single();
-  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not yet verified. Please check back within 24 hours (do steady checks to see that you have been verified).');
+  if (!user || !user.is_verified) return ctx.reply('⚠️ Account not yet verified. Please check back within 24 hours.');
 
   const { data: referrals } = await supabase.from('users').select('first_name').eq('referred_by', ctx.from.id).eq('is_verified', true);
   let list = referrals.length > 0 ? referrals.map(r => `• ${r.first_name}`).join('\n') : 'No verified referrals yet.';
-  ctx.reply(`📊 *Your Stats*\n\nTotal Verified Referrals: ${user.total_referrals}\n\n*Referral List:*\n${list}`, { parse_mode: 'Markdown' });
+  ctx.reply(`📊 <b>Your Stats</b>\n\nTotal Verified Referrals: ${user.total_referrals}\n\n<b>Referral List:</b>\n${list}`, { parse_mode: 'HTML' });
 });
 
 bot.hears('💰 Balance', async (ctx) => {
@@ -143,7 +143,7 @@ bot.hears('💰 Balance', async (ctx) => {
   const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
   const currentBalance = (user.total_referrals || 0) * settings.reward_amount;
   
-  ctx.reply(`💰 *Current Balance:* ₦${currentBalance}\n\n_(Calculated at the current rate of ₦${settings.reward_amount} per referral)_`, { parse_mode: 'Markdown' });
+  ctx.reply(`💰 <b>Current Balance:</b> ₦${currentBalance}\n\n<i>(Calculated at the current rate of ₦${settings.reward_amount} per referral)</i>`, { parse_mode: 'HTML' });
 });
 
 bot.hears('🔗 Referral Link', async (ctx) => {
@@ -153,21 +153,21 @@ bot.hears('🔗 Referral Link', async (ctx) => {
   const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
   const botInfo = await ctx.telegram.getMe();
   const link = `https://t.me/${botInfo.username}?start=${ctx.from.id}`;
-  ctx.reply(`🔗 *Your Referral Link:*\n\n\`${link}\`\n\nShare this! You earn ₦${settings.reward_amount} for every friend who joins, saves my contact, and gets verified.`, { parse_mode: 'Markdown' });
+  ctx.reply(`🔗 <b>Your Referral Link:</b>\n\n<code>${link}</code>\n\nShare this! You earn ₦${settings.reward_amount} for every friend who joins and gets verified.`, { parse_mode: 'HTML' });
 });
 
 bot.hears('💸 Redeem', async (ctx) => {
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', ctx.from.id).single();
   if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified.');
 
-  if (user.total_referrals < 3) return ctx.reply('⚠️ Min 3 verified referrals required to redeem.', { parse_mode: 'Markdown' });
+  if (user.total_referrals < 3) return ctx.reply('⚠️ Min 3 verified referrals required to redeem.');
   
   const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
   const currentBalance = (user.total_referrals || 0) * settings.reward_amount;
   if (currentBalance <= 0) return ctx.reply('⚠️ Your balance is ₦0.');
 
   await supabase.from('users').update({ state: 'awaiting_bank' }).eq('telegram_id', ctx.from.id);
-  ctx.reply('🏦 *Bank Details Request*\n\nPlease send your bank details (Bank Name, Account #, Account Name):', { parse_mode: 'Markdown', ...cancelInline, reply_markup: { remove_keyboard: true } });
+  ctx.reply('🏦 <b>Bank Details Request</b>\n\nPlease send your bank details (Bank Name, Account #, Account Name):', { parse_mode: 'HTML', ...cancelInline, reply_markup: { remove_keyboard: true } });
 });
 
 bot.hears(/Policies/i, async (ctx) => {
@@ -351,13 +351,34 @@ bot.on('text', async (ctx) => {
   // States
   if (user.state === 'awaiting_whatsapp') {
     await supabase.from('users').update({ whatsapp_number: text, state: 'idle' }).eq('telegram_id', telegram_id);
-    return ctx.reply('✅ WhatsApp Saved! Now join the group and send proof.', { parse_mode: 'HTML' });
+    const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).single();
+    
+    const instruct = `✅ <b>WhatsApp Saved!</b>\n\nNow follow these final steps:\n\n` +
+      `<b>Step 2:</b> Click below to Join our WhatsApp Group.\n` +
+      `<b>Step 3:</b> Click below to Save My Contact. <b>Important:</b> Send me a screenshot <b>here in this chat</b> as proof that you saved it!\n\n` +
+      `🕒 After sending proof, an admin will activate your account soon! Check back within 24 hours.`;
+    
+    const links = Markup.inlineKeyboard([
+      [Markup.button.url('📱 Join Group', settings.group_link)],
+      [Markup.button.url('👤 Save My Contact', settings.contact_link)]
+    ]);
+    
+    return ctx.reply(instruct, { parse_mode: 'HTML', ...links });
   }
 
   if (user.state === 'awaiting_bank') {
-    await supabase.from('payout_requests').insert({ telegram_id, amount: user.balance, bank_details: text });
+    const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
+    const realBalance = (user.total_referrals || 0) * settings.reward_amount;
+    
+    // Fraud check
+    const { data: existing } = await supabase.from('payout_requests').select('telegram_id').eq('bank_details', text).neq('telegram_id', telegram_id).limit(1);
+    if (existing && existing.length > 0) {
+       adminIds.forEach(aid => { try { ctx.telegram.sendMessage(aid, `🚨 <b>FRAUD ALERT</b>\nUser <code>${telegram_id}</code> using same bank as User <code>${existing[0].telegram_id}</code>.`, { parse_mode: 'HTML' }); } catch(e){} });
+    }
+
+    await supabase.from('payout_requests').insert({ telegram_id, amount: realBalance, bank_details: text });
     await supabase.from('users').update({ state: 'idle', balance: 0 }).eq('telegram_id', telegram_id);
-    return ctx.reply('✅ Request Submitted!', mainMenu);
+    return ctx.reply('✅ <b>Request Submitted!</b> Admin will review.', { parse_mode: 'HTML', ...mainMenu });
   }
 
   if (ctx.isAdmin && user.state.startsWith('admin_awaiting_')) {
@@ -369,15 +390,10 @@ bot.on('text', async (ctx) => {
     if (user.state === 'admin_awaiting_broadcast') {
       const { data: targets } = await supabase.from('users').select('telegram_id').eq('is_verified', true);
       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-      
       ctx.reply(`🚀 Starting broadcast to ${targets.length} users...`);
-      
       let count = 0;
       for (const t of targets) {
-        try {
-          await ctx.telegram.sendMessage(t.telegram_id, `📢 <b>ANNOUNCEMENT</b>\n\n${text}`, { parse_mode: 'HTML' });
-          count++;
-        } catch (e) {}
+        try { await ctx.telegram.sendMessage(t.telegram_id, `📢 <b>ANNOUNCEMENT</b>\n\n${text}`, { parse_mode: 'HTML' }); count++; } catch (e) {}
       }
       return ctx.reply(`✅ <b>Broadcast Complete</b>\nSent to ${count} users.`, { parse_mode: 'HTML', ...adminMenu });
     }
@@ -407,7 +423,7 @@ bot.on('text', async (ctx) => {
        const { data: s } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
        await supabase.rpc('verify_user_and_reward', { u_id: uid, r_id: target.referred_by || null, amt: parseInt(s.reward_amount) });
        await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-       try { await ctx.telegram.sendMessage(uid, '🎊 Account Verified!', mainMenu); } catch(e) {}
+       try { await ctx.telegram.sendMessage(uid, '🎊 <b>Account Verified!</b>', mainMenu); } catch(e) {}
        return ctx.reply('✅ User Verified.', adminMenu);
     }
 
