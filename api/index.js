@@ -108,7 +108,8 @@ bot.start(async (ctx) => {
       [Markup.button.url('👤 Save My Contact', settings.contact_link)]
     ]);
     
-    return ctx.reply(instruct, { parse_mode: 'Markdown', ...links });
+    await ctx.reply(instruct, { parse_mode: 'Markdown', ...links });
+    return ctx.reply('Use the menu below to explore our policies and referral bonuses:', mainMenu);
   }
 
   return ctx.reply(`Welcome back, ${first_name}! Choose an option:`, mainMenu);
@@ -289,36 +290,68 @@ bot.on('text', async (ctx) => {
 
       if (user.state === 'admin_awaiting_reward') {
         const amt = parseInt(text);
-        if (isNaN(amt) || amt < 0) return ctx.reply('❌ Please enter a valid positive number.');
+        if (isNaN(amt) || amt < 0) return ctx.reply('❌ Please enter a valid positive number for the reward.');
         await supabase.from('settings').update({ reward_amount: amt }).eq('id', 1);
         await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
         return ctx.reply(`✅ Reward updated to ₦${amt}.`, adminMoreMenu);
       }
 
+      if (user.state === 'admin_awaiting_group_link') {
+        if (!text.startsWith('http')) return ctx.reply('❌ Please enter a valid URL starting with http:// or https://');
+        await supabase.from('settings').update({ group_link: text }).eq('id', 1);
+        await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
+        return ctx.reply('✅ Group link updated.', adminMoreMenu);
+      }
+
+      if (user.state === 'admin_awaiting_contact_link') {
+        if (!text.startsWith('http')) return ctx.reply('❌ Please enter a valid URL starting with http:// or https://');
+        await supabase.from('settings').update({ contact_link: text }).eq('id', 1);
+        await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
+        return ctx.reply('✅ Contact link updated.', adminMoreMenu);
+      }
+
       if (user.state === 'admin_awaiting_verify_id') {
         const uid = parseInt(text);
-        if (isNaN(uid)) return ctx.reply('❌ Invalid ID.');
+        if (isNaN(uid)) return ctx.reply('❌ Invalid ID format. Please enter a numeric Telegram ID.');
+        
         const { data: target } = await supabase.from('users').select('*').eq('telegram_id', uid).single();
-        if (!target) return ctx.reply('❌ User not found.');
-        if (target.is_verified) return ctx.reply('⚠️ User already verified.', adminMoreMenu);
+        if (!target) return ctx.reply(`❌ User with ID \`${uid}\` not found in database.`, Markup.keyboard([['❌ Cancel']]).resize());
+        if (target.is_verified) return ctx.reply(`⚠️ User \`${uid}\` is already verified.`, adminMoreMenu);
 
         const { data: s } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
         const { error } = await supabase.rpc('verify_user_and_reward', { u_id: uid, r_id: target.referred_by, amt: s.reward_amount });
-        if (error) return ctx.reply('❌ Database error.');
+        if (error) return ctx.reply('❌ Database error during activation.');
 
-        try { ctx.telegram.sendMessage(uid, '🎊 *Account Verified!*', mainMenu); } catch(e) {}
+        try { ctx.telegram.sendMessage(uid, '🎊 *Account Verified!* You can now start referring.', mainMenu); } catch(e) {}
         await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-        return ctx.reply(`✅ User ${uid} verified.`, adminMoreMenu);
+        return ctx.reply(`✅ User \`${uid}\` (${target.first_name}) verified successfully.`, adminMoreMenu);
       }
 
       if (user.state === 'admin_awaiting_ban_id') {
         const uid = parseInt(text);
+        if (isNaN(uid)) return ctx.reply('❌ Invalid ID format.');
+        
+        const { data: target } = await supabase.from('users').select('telegram_id').eq('telegram_id', uid).single();
+        if (!target) return ctx.reply('❌ User not found in database.', Markup.keyboard([['❌ Cancel']]).resize());
+
         await supabase.from('users').update({ is_banned: true }).eq('telegram_id', uid);
         await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-        return ctx.reply(`🚫 User ${uid} banned.`, adminMoreMenu);
+        return ctx.reply(`🚫 User \`${uid}\` has been banned.`, adminMoreMenu);
       }
-      
-      // ... Add other admin awaiting states as needed ...
+
+      if (user.state === 'admin_awaiting_approve_id') {
+        const pid = parseInt(text);
+        if (isNaN(pid)) return ctx.reply('❌ Invalid Payout ID.');
+        
+        const { data: req } = await supabase.from('payout_requests').select('*').eq('id', pid).single();
+        if (!req) return ctx.reply('❌ Payout request not found.');
+        if (req.status === 'approved') return ctx.reply('⚠️ This payout is already approved.', adminMoreMenu);
+
+        await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', pid);
+        try { ctx.telegram.sendMessage(req.telegram_id, '🎊 *Payout Sent!* Check your bank account.', mainMenu); } catch(e) {}
+        await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
+        return ctx.reply(`✅ Payout ID \`${pid}\` approved.`, adminMoreMenu);
+      }
     }
 
     // B. Super Admin Commands
@@ -380,6 +413,8 @@ bot.on('text', async (ctx) => {
     // D. Trigger Action States
     const stateMap = {
       '💰 Set Reward': 'admin_awaiting_reward',
+      '📱 Set Group Link': 'admin_awaiting_group_link',
+      '👤 Set Contact Link': 'admin_awaiting_contact_link',
       '✅ Verify by ID': 'admin_awaiting_verify_id',
       '🚫 Ban User': 'admin_awaiting_ban_id',
       '💸 Approve Payout': 'admin_awaiting_approve_id'
