@@ -1,4 +1,7 @@
--- 1. Create the 'users' table if it doesn't exist
+-- --- CONSOLIDATED SUPABASE SETUP ---
+-- Run this in your Supabase SQL Editor to prepare your database.
+
+-- 1. Users Table
 CREATE TABLE IF NOT EXISTS users (
     telegram_id BIGINT PRIMARY KEY,
     username TEXT,
@@ -13,31 +16,32 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Add columns to 'users' if they are missing (for safety)
-ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_number TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;
-
--- 3. Create the 'payout_requests' table
+-- 2. Payout Requests Table
+-- Note: Using SERIAL for ID makes it easier for admins to type IDs on mobile.
 CREATE TABLE IF NOT EXISTS payout_requests (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id SERIAL PRIMARY KEY,
     telegram_id BIGINT REFERENCES users(telegram_id),
     amount INTEGER NOT NULL,
     bank_details TEXT NOT NULL,
-    status TEXT DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+    status TEXT DEFAULT 'pending', -- 'pending', 'approved'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Create the 'settings' table
+-- 3. Settings Table
 CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY DEFAULT 1,
     reward_amount INTEGER DEFAULT 150,
-    whatsapp_link TEXT DEFAULT 'https://chat.whatsapp.com/K0W0hfLP2t09woNLfX8mH6?mode=gi_t'
+    group_link TEXT DEFAULT 'https://chat.whatsapp.com/example',
+    contact_link TEXT DEFAULT 'https://wa.me/example'
 );
 
--- 5. Add columns to 'settings' if missing
-ALTER TABLE settings ADD COLUMN IF NOT EXISTS whatsapp_link TEXT DEFAULT 'https://chat.whatsapp.com/K0W0hfLP2t09woNLfX8mH6?mode=gi_t';
-
--- 6. Insert initial settings row
-INSERT INTO settings (id, reward_amount, whatsapp_link) 
-VALUES (1, 150, 'https://chat.whatsapp.com/K0W0hfLP2t09woNLfX8mH6?mode=gi_t')
+-- 4. Initial Configuration
+INSERT INTO settings (id, reward_amount, group_link, contact_link) 
+VALUES (1, 150, 'https://chat.whatsapp.com/your-link', 'https://wa.me/your-number')
 ON CONFLICT (id) DO NOTHING;
+
+-- 5. Safety Migrations (if tables already exist)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_number TEXT;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS group_link TEXT;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS contact_link TEXT;
