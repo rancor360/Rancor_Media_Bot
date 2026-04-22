@@ -99,17 +99,17 @@ bot.start(async (ctx) => {
 
   if (!user.is_verified) {
     const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).single();
-    const instruct = `⏳ *Verification in Progress*\n\nPlease complete these final steps:\n\n` +
-      `*Step 2:* Join our WhatsApp Group below.\n` +
-      `*Step 3:* Click "Save My Contact", save the number, and *send me a screenshot* on WhatsApp as proof.\n\n` +
-      `✅ *Note:* After sending proof, please check back within 24 hours (do steady checks to see that you have been verified). An admin will activate your account!`;
+    const instruct = `⏳ <b>Verification in Progress</b>\n\nPlease complete these final steps:\n\n` +
+      `<b>Step 2:</b> Join our WhatsApp Group below.\n` +
+      `<b>Step 3:</b> Click "Save My Contact", save the number, and <b>send me a screenshot right here</b> in this chat as proof.\n\n` +
+      `✅ <b>Note:</b> After sending proof, an admin will activate your account within 24 hours. Check back steady!`;
     
     const links = Markup.inlineKeyboard([
       [Markup.button.url('📱 Join Group', settings.group_link)],
       [Markup.button.url('👤 Save My Contact', settings.contact_link)]
     ]);
     
-    await ctx.reply(instruct, { parse_mode: 'Markdown', ...links });
+    await ctx.reply(instruct, { parse_mode: 'HTML', ...links });
     return ctx.reply('Use the menu below to explore our policies and referral bonuses:', mainMenu);
   }
 
@@ -168,7 +168,7 @@ bot.hears(/Policies/i, async (ctx) => {
     `🚀 <b>How it Works:</b>\n` +
     `1️⃣ Share your link from the "Referral Link" button.\n` +
     `2️⃣ Your friend must join the group and save our contact.\n` +
-    `3️⃣ Send a screenshot proof to an admin (via WhatsApp or here).\n` +
+    `3️⃣ Send a screenshot proof <b>right here in this bot</b>.\n` +
     `4️⃣ Earn <b>₦${settings.reward_amount}</b> for every friend who gets verified!\n\n` +
     `⚖️ <b>Rules:</b>\n` +
     `• One account per person only.\n` +
@@ -204,16 +204,19 @@ bot.on('photo', async (ctx) => {
     const { data: dbAdmins } = await supabase.from('admins').select('telegram_id');
     const allAdmins = [...envAdminIds, ...(dbAdmins || []).map(a => a.telegram_id)];
 
-    const verifyButton = Markup.inlineKeyboard([
-      [Markup.button.callback(`✅ Verify ${ctx.from.first_name}`, `verify_user_${telegram_id}`)]
+    const verifyButtons = Markup.inlineKeyboard([
+      [
+        Markup.button.callback(`✅ Verify`, `verify_user_${telegram_id}`),
+        Markup.button.callback(`❌ Reject`, `reject_user_${telegram_id}`)
+      ]
     ]);
 
     allAdmins.forEach(aid => {
       try {
         ctx.telegram.sendPhoto(aid, photo.file_id, {
-          caption: `📸 *New Verification Proof*\nUser: ${ctx.from.first_name}\nID: \`${telegram_id}\`\nWA: ${user.whatsapp_number}`,
-          parse_mode: 'Markdown',
-          ...verifyButton
+          caption: `📸 <b>New Verification Proof</b>\n\nUser: ${ctx.from.first_name}\nID: <code>${telegram_id}</code>\nWA: ${user.whatsapp_number}`,
+          parse_mode: 'HTML',
+          ...verifyButtons
         });
       } catch (e) {}
     });
@@ -253,6 +256,38 @@ bot.action(/^verify_user_(\d+)$/, async (ctx) => {
   }
 });
 
+bot.action(/^reject_user_(\d+)$/, async (ctx) => {
+  if (!ctx.isAdmin) return ctx.answerCbQuery('🚫 Unauthorized');
+  const uid = ctx.match[1];
+  const reasons = Markup.inlineKeyboard([
+    [Markup.button.callback('🖼 Blurry/Wrong Photo', `reject_reason_${uid}_photo`)],
+    [Markup.button.callback('👥 Not in Group', `reject_reason_${uid}_group`)],
+    [Markup.button.callback('👤 Contact Not Saved', `reject_reason_${uid}_contact`)],
+    [Markup.button.callback('❌ Cancel', `cancel_action`)]
+  ]);
+  await ctx.editMessageCaption('❌ <b>Select Rejection Reason:</b>', { parse_mode: 'HTML', ...reasons });
+});
+
+bot.action(/^reject_reason_(\d+)_(.+)$/, async (ctx) => {
+  if (!ctx.isAdmin) return ctx.answerCbQuery('🚫 Unauthorized');
+  const uid = parseInt(ctx.match[1]);
+  const reasonCode = ctx.match[2];
+  
+  const reasons = {
+    'photo': 'The screenshot provided is blurry or the wrong image.',
+    'group': 'You have not joined the official WhatsApp group.',
+    'contact': 'You have not saved the required contact on your phone.'
+  };
+  const reason = reasons[reasonCode] || 'Invalid proof provided.';
+
+  try {
+    await ctx.telegram.sendMessage(uid, `❌ <b>Verification Rejected</b>\n\nYour proof was rejected for the following reason:\n<i>${reason}</i>\n\nPlease fix this and send a new screenshot proof here.`, { parse_mode: 'HTML' });
+  } catch (e) {}
+
+  await ctx.editMessageCaption(`❌ <b>User Rejected</b>\nReason: ${reason}\nBy: ${ctx.from.first_name}`, { parse_mode: 'HTML' });
+  ctx.answerCbQuery('User Notified of Rejection');
+});
+
 bot.hears('📥 Download Report', async (ctx) => {
   if (!ctx.isAdmin) return;
   const { data: users } = await supabase.from('users').select('*').order('created_at', { ascending: false });
@@ -287,17 +322,17 @@ bot.on('text', async (ctx) => {
       } catch(e) {}
     });
 
-    const instruct = `✅ *WhatsApp Saved!*\n\nNow follow these final steps:\n\n` +
-      `*Step 2:* Click below to Join our WhatsApp Group.\n` +
-      `*Step 3:* Click below to Save My Contact. *Important:* Send me a screenshot on WhatsApp as proof that you saved it!\n\n` +
-      `🕒 *After sending proof, please check back within 24 hours (do steady checks to see that you have been verified).* An admin will activate your account here soon!`;
+    const instruct = `✅ <b>WhatsApp Saved!</b>\n\nNow follow these final steps:\n\n` +
+      `<b>Step 2:</b> Click below to Join our WhatsApp Group.\n` +
+      `<b>Step 3:</b> Click below to Save My Contact. <b>Important:</b> Send me a screenshot <b>here in this chat</b> as proof that you saved it!\n\n` +
+      `🕒 After sending proof, an admin will activate your account soon! Check back within 24 hours.`;
     
     const links = Markup.inlineKeyboard([
       [Markup.button.url('📱 Join Group', settings.group_link)],
       [Markup.button.url('👤 Save My Contact', settings.contact_link)]
     ]);
     
-    return ctx.reply(instruct, { parse_mode: 'Markdown', ...links });
+    return ctx.reply(instruct, { parse_mode: 'HTML', ...links });
   }
 
   // 2. Awaiting Bank Details
