@@ -167,7 +167,7 @@ bot.hears('💸 Redeem', async (ctx) => {
   if (currentBalance <= 0) return ctx.reply('⚠️ Your balance is ₦0.');
 
   await supabase.from('users').update({ state: 'awaiting_bank' }).eq('telegram_id', ctx.from.id);
-  ctx.reply('🏦 <b>Bank Details Request</b>\n\nPlease send your bank details (Bank Name, Account #, Account Name):', { parse_mode: 'HTML', ...cancelInline, reply_markup: { remove_keyboard: true } });
+  ctx.reply('🏦 <b>Bank Details Request</b>\n\nPlease send your bank details (Bank Name, Account #, Account Name):', { parse_mode: 'HTML', ...cancelInline });
 });
 
 bot.hears(/Policies/i, async (ctx) => {
