@@ -25,7 +25,7 @@ const allButtons = [
   '⏳ Verifications', '💸 Payout Queue', '👥 User Directory', '📥 Download Report',
   '⚙️ Settings', '➕ More Tools', '🏠 Home', '✅ Verify by ID', '🚫 Ban User',
   '💰 Set Reward', '💸 Approve Payout', '📱 Set Group Link', '👤 Set Contact Link',
-  '⬅️ Back', '📢 Broadcast'
+  '⬅️ Back', '📢 Broadcast', '🔔 Remind Admin'
 ];
 
 // --- KEYBOARDS ---
@@ -48,6 +48,11 @@ const adminMoreMenu = Markup.keyboard([
   ['💰 Set Reward', '💸 Approve Payout'],
   ['📱 Set Group Link', '👤 Set Contact Link'],
   ['📢 Broadcast', '⬅️ Back']
+]).resize();
+
+const pendingMenu = Markup.keyboard([
+  ['🔔 Remind Admin'],
+  ['📜 Policies']
 ]).resize();
 
 const cancelInline = Markup.inlineKeyboard([
@@ -119,6 +124,9 @@ bot.start(async (ctx) => {
     ]);
     
     await ctx.reply(instruct, { parse_mode: 'HTML', ...links });
+    if (user.state === 'awaiting_review') {
+      return ctx.reply('Use the menu below to remind an admin or check policies:', pendingMenu);
+    }
     return ctx.reply('Use the menu below to explore our policies and referral bonuses:', mainMenu);
   }
 
@@ -187,6 +195,26 @@ bot.hears(/Policies/i, async (ctx) => {
     `👤 <b>Admin Contact:</b> ${settings.contact_link}`;
 
   ctx.reply(msg, { parse_mode: 'HTML' });
+});
+
+bot.hears('🔔 Remind Admin', async (ctx) => {
+  const { data: user } = await supabase.from('users').select('*').eq('telegram_id', ctx.from.id).single();
+  
+  if (!user || user.is_verified || user.state !== 'awaiting_review') {
+    return ctx.reply('⚠️ This option is only for users awaiting verification proof review.');
+  }
+
+  ctx.reply('🔔 <b>Reminder Sent!</b>\nAdmins have been notified of your pending verification.', { parse_mode: 'HTML' });
+
+  const envAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim()));
+  const { data: dbAdmins } = await supabase.from('admins').select('telegram_id');
+  const allAdmins = [...envAdminIds, ...(dbAdmins || []).map(a => a.telegram_id)];
+
+  allAdmins.forEach(aid => {
+    try {
+      ctx.telegram.sendMessage(aid, `🔔 <b>Verification Reminder</b>\n\nUser: ${ctx.from.first_name}\nID: <code>${ctx.from.id}</code>\nStatus: Awaiting Review since ${new Date(user.created_at).toLocaleDateString()}`, { parse_mode: 'HTML' });
+    } catch (e) {}
+  });
 });
 
 // --- ADMIN MENU ACTIONS ---
@@ -285,8 +313,16 @@ bot.on('photo', async (ctx) => {
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
 
   if (user && !user.is_verified) {
+    if (user.state === 'awaiting_review') {
+      return ctx.reply('⏳ <b>Proof Already Submitted</b>\n\nYour screenshot is already in the queue. Please wait for an admin to review it.', { parse_mode: 'HTML', ...pendingMenu });
+    }
+
     const photo = ctx.message.photo[ctx.message.photo.length - 1];
-    ctx.reply('📩 *Proof Submitted!*\nAn admin will review your screenshot shortly.', { parse_mode: 'Markdown' });
+    
+    // Update state to awaiting_review
+    await supabase.from('users').update({ state: 'awaiting_review' }).eq('telegram_id', telegram_id);
+    
+    ctx.reply('📩 *Proof Submitted!*\nAn admin will review your screenshot shortly.', { parse_mode: 'Markdown', ...pendingMenu });
 
     const envAdminIds = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim()));
     const { data: dbAdmins } = await supabase.from('admins').select('telegram_id');
@@ -306,7 +342,9 @@ bot.on('photo', async (ctx) => {
           parse_mode: 'HTML',
           ...verifyButtons
         });
-      } catch (e) {}
+      } catch (e) {
+        console.error(`Failed to notify admin ${aid}:`, e.message);
+      }
     });
   }
 });
@@ -319,6 +357,7 @@ bot.action(/^verify_user_(\d+)$/, async (ctx) => {
     const { data: s } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
     const { error } = await supabase.rpc('verify_user_and_reward', { u_id: uid, r_id: target.referred_by || null, amt: parseInt(s.reward_amount) });
     if (error) return ctx.answerCbQuery('❌ Error activating user.');
+    await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', uid);
     try { await ctx.telegram.sendMessage(uid, `🎊 <b>Account Verified!</b>\nYou can now start referring.`, { parse_mode: 'HTML', ...mainMenu }); } catch(e) {}
     await ctx.editMessageCaption(`✅ <b>User Verified</b>\nBy: ${ctx.from.first_name}`, { parse_mode: 'HTML' });
     ctx.answerCbQuery('User Activated!');
@@ -344,6 +383,7 @@ bot.action(/^reject_reason_(\d+)_(.+)$/, async (ctx) => {
   const reasons = { 'photo': 'Blurry/wrong photo.', 'group': 'Not in group.', 'contact': 'Contact not saved.' };
   const reason = reasons[reasonCode] || 'Invalid proof.';
   try { await ctx.telegram.sendMessage(uid, `❌ <b>Rejected:</b> ${reason}\nPlease try again.`, { parse_mode: 'HTML' }); } catch (e) {}
+  await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', uid);
   await ctx.editMessageCaption(`❌ <b>Rejected:</b> ${reason}`, { parse_mode: 'HTML' });
 });
 
