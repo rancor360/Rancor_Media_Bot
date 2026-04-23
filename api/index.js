@@ -368,8 +368,11 @@ bot.action(/^verify_user_(\d+)$/, async (ctx) => {
   const { data: target } = await supabase.from('users').select('*').eq('telegram_id', uid).single();
   if (target && !target.is_verified) {
     const { data: s } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
-    const { error } = await supabase.rpc('verify_user_and_reward', { u_id: uid, r_id: target.referred_by || null, amt: parseInt(s.reward_amount) });
+    const { data: success, error } = await supabase.rpc('verify_user_and_reward', { u_id: uid, r_id: target.referred_by || null, amt: parseInt(s.reward_amount) });
+    
     if (error) return ctx.answerCbQuery('❌ Error activating user.');
+    if (!success) return ctx.answerCbQuery('⚠️ User already verified.');
+
     try { await ctx.telegram.sendMessage(uid, `🎊 <b>Account Verified!</b>\nYou can now start referring.`, { parse_mode: 'HTML', ...mainMenu }); } catch(e) {}
     await ctx.editMessageCaption(`✅ <b>User Verified</b>\nBy: ${ctx.from.first_name}`, { parse_mode: 'HTML' });
     ctx.answerCbQuery('User Activated!');
@@ -481,8 +484,11 @@ bot.on('text', async (ctx) => {
        const { data: target } = await supabase.from('users').select('*').eq('telegram_id', uid).single();
        if (!target) return ctx.reply('❌ User not found.');
        const { data: s } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
-       await supabase.rpc('verify_user_and_reward', { u_id: uid, r_id: target.referred_by || null, amt: parseInt(s.reward_amount) });
+       const { data: success } = await supabase.rpc('verify_user_and_reward', { u_id: uid, r_id: target.referred_by || null, amt: parseInt(s.reward_amount) });
        await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', ctx.from.id);
+       
+       if (!success) return ctx.reply('⚠️ User was already verified.', adminMenu);
+
        try { await ctx.telegram.sendMessage(uid, '🎊 <b>Account Verified!</b>', mainMenu); } catch(e) {}
        return ctx.reply('✅ User Verified.', adminMenu);
     }
