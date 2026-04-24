@@ -24,8 +24,8 @@ const allButtons = [
   '📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📜 Policies',
   '⏳ Verifications', '💸 Payout Queue', '👥 User Directory', '📥 Download Report',
   '⚙️ Settings', '➕ More Tools', '🏠 Home', '✅ Verify by ID', '🚫 Ban User',
-  '💰 Set Reward', '💸 Approve Payout', '📱 Set Group Link', '👤 Set Contact Link',
-  '⬅️ Back', '📢 Broadcast', '🔔 Remind Admin'
+  '🔓 Unban User', '💰 Set Reward', '💸 Approve Payout', '📱 Set Group Link',
+  '👤 Set Contact Link', '📢 Broadcast', '⬅️ Back', '🔔 Remind Admin'
 ];
 
 // --- KEYBOARDS ---
@@ -44,10 +44,11 @@ const adminMenu = Markup.keyboard([
 ]).resize();
 
 const adminMoreMenu = Markup.keyboard([
-  ['✅ Verify by ID', '🚫 Ban User'],
-  ['💰 Set Reward', '💸 Approve Payout'],
+  ['✅ Verify by ID', '💸 Approve Payout'],
+  ['🚫 Ban User', '🔓 Unban User'],
+  ['💰 Set Reward', '📢 Broadcast'],
   ['📱 Set Group Link', '👤 Set Contact Link'],
-  ['📢 Broadcast', '⬅️ Back']
+  ['⬅️ Back']
 ]).resize();
 
 const pendingMenu = Markup.keyboard([
@@ -64,8 +65,9 @@ const cancelInline = Markup.inlineKeyboard([
 bot.use(async (ctx, next) => {
   if (!ctx.from) return next();
   
-  // 1. Check for Ban
-  const { data: user } = await supabase.from('users').select('is_banned').eq('telegram_id', ctx.from.id).single();
+  // 1. Check for Ban (Use string conversion for 64-bit safety)
+  const uidStr = String(ctx.from.id);
+  const { data: user } = await supabase.from('users').select('is_banned').eq('telegram_id', uidStr).single();
   if (user && user.is_banned) {
     return ctx.reply('🚫 *Account Banned*\n\nYour account has been suspended for violating our policies.', { parse_mode: 'Markdown' });
   }
@@ -78,7 +80,7 @@ bot.use(async (ctx, next) => {
     ctx.isAdmin = true;
     ctx.isSuperAdmin = (ctx.from.id === masterAdmin);
   } else {
-    const { data: admin } = await supabase.from('admins').select('telegram_id').eq('telegram_id', ctx.from.id).single();
+    const { data: admin } = await supabase.from('admins').select('telegram_id').eq('telegram_id', uidStr).single();
     ctx.isAdmin = !!admin;
     ctx.isSuperAdmin = false;
   }
@@ -302,6 +304,7 @@ const stateMap = {
   '👤 Set Contact Link': 'admin_awaiting_contact_link',
   '✅ Verify by ID': 'admin_awaiting_verify_id',
   '🚫 Ban User': 'admin_awaiting_ban_id',
+  '🔓 Unban User': 'admin_awaiting_unban_id',
   '💸 Approve Payout': 'admin_awaiting_approve_id'
 };
 
@@ -309,7 +312,7 @@ Object.keys(stateMap).forEach(key => {
   bot.hears(key, async (ctx) => {
     if (!ctx.isAdmin) return;
     await supabase.from('users').update({ state: stateMap[key] }).eq('telegram_id', ctx.from.id);
-    return ctx.reply(`Please enter the new ${key.split('Set ')[1] || 'value'}:`, Markup.keyboard([['❌ Cancel']]).resize());
+    return ctx.reply(`Please enter the ${key.includes('Link') ? 'new link' : 'Telegram ID'}:`, Markup.keyboard([['❌ Cancel']]).resize());
   });
 });
 
@@ -407,13 +410,103 @@ bot.action(/^reject_reason_(\d+)_(.+)$/, async (ctx) => {
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
   const telegram_id = ctx.from.id;
-  const { data: user } = await supabase.from('users').select('*').eq('telegram_id', telegram_id).single();
+  const { data: user } = await supabase.from('users').select('*').eq('telegram_id', String(telegram_id)).single();
 
-  if (!user || allButtons.includes(text) || /Policies/i.test(text)) return;
+  if (!user) return;
 
-  // States
+  // 1. UNIVERSAL ESCAPE HATCH (Check this first to prevent deadlocks)
+  if (text === '❌ Cancel' || text === '🏠 Home' || text === '/cancel') {
+    if (user.state !== 'idle') {
+      await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+      const targetMenu = (text === '🏠 Home') ? mainMenu : (ctx.isAdmin ? adminMenu : mainMenu);
+      return ctx.reply('❌ Action canceled.', { parse_mode: 'HTML', ...targetMenu });
+    }
+    if (text === '/cancel') return ctx.reply('No active action to cancel.');
+    if (text === '🏠 Home' || text === '❌ Cancel') return; // Let menu handlers pick up
+  }
+
+  if (allButtons.includes(text) || /Policies/i.test(text)) return;
+
+  // 2. ADMIN STATES
+  if (ctx.isAdmin && user.state.startsWith('admin_awaiting_')) {
+    
+    if (user.state === 'admin_awaiting_broadcast') {
+      const { data: targets } = await supabase.from('users').select('telegram_id').eq('is_verified', true);
+      await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+      ctx.reply(`🚀 Starting broadcast to ${targets.length} users...`);
+      let count = 0;
+      for (const t of targets) {
+        try { await ctx.telegram.sendMessage(String(t.telegram_id), `📢 <b>ANNOUNCEMENT</b>\n\n${text}`, { parse_mode: 'HTML' }); count++; } catch (e) {}
+      }
+      return ctx.reply(`✅ <b>Broadcast Complete</b>\nSent to ${count} users.`, { parse_mode: 'HTML', ...adminMenu });
+    }
+
+    // ID-based Admin Actions
+    const idStates = ['admin_awaiting_verify_id', 'admin_awaiting_ban_id', 'admin_awaiting_unban_id'];
+    if (idStates.includes(user.state)) {
+      if (!/^\d+$/.test(text) || text.length > 20) {
+        return ctx.reply('❌ <b>Invalid ID</b>\n\nPlease enter a numeric Telegram ID (max 20 digits).', { parse_mode: 'HTML', ...Markup.keyboard([['❌ Cancel']]).resize() });
+      }
+
+      try {
+        if (user.state === 'admin_awaiting_verify_id') {
+          const { data: target } = await supabase.from('users').select('*').eq('telegram_id', text).single();
+          if (!target) return ctx.reply('❌ User not found.');
+          const { data: s } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
+          const { data: success } = await supabase.rpc('verify_user_and_reward', { u_id: text, r_id: target.referred_by || null, amt: parseInt(s.reward_amount) });
+          await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+          if (!success) return ctx.reply('⚠️ User was already verified.', adminMenu);
+          try { await ctx.telegram.sendMessage(text, '🎊 <b>Account Verified!</b>', mainMenu); } catch(e) {}
+          return ctx.reply('✅ User Verified.', adminMenu);
+        }
+
+        if (user.state === 'admin_awaiting_ban_id') {
+          await supabase.from('users').update({ is_banned: true, state: 'idle' }).eq('telegram_id', text);
+          await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+          return ctx.reply('🚫 User Banned.', adminMenu);
+        }
+
+        if (user.state === 'admin_awaiting_unban_id') {
+          // Sanitization: Reset state and whatsapp_number when unbanning
+          await supabase.from('users').update({ is_banned: false, state: 'idle', whatsapp_number: null }).eq('telegram_id', text);
+          await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+          return ctx.reply('🔓 User Unbanned and sanitized.', adminMenu);
+        }
+      } catch (e) {
+        console.error('DB Admin Action Error:', e.message);
+        await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+        return ctx.reply('❌ <b>System Error</b>\nFailed to perform action. Check logs.', { parse_mode: 'HTML', ...adminMenu });
+      }
+    }
+
+    if (user.state === 'admin_awaiting_reward') {
+       await supabase.from('settings').update({ reward_amount: parseInt(text) || 0 }).eq('id', 1);
+       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+       return ctx.reply('✅ Reward Updated.', adminMenu);
+    }
+
+    if (user.state === 'admin_awaiting_group_link') {
+       await supabase.from('settings').update({ group_link: text }).eq('id', 1);
+       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+       return ctx.reply('✅ Group Link Updated.', adminMenu);
+    }
+
+    if (user.state === 'admin_awaiting_contact_link') {
+       await supabase.from('settings').update({ contact_link: text }).eq('id', 1);
+       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+       return ctx.reply('✅ Contact Link Updated.', adminMenu);
+    }
+
+    if (user.state === 'admin_awaiting_approve_id') {
+       await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', parseInt(text));
+       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+       return ctx.reply('✅ Payout Approved.', adminMenu);
+    }
+  }
+
+  // 3. USER STATES
   if (user.state === 'awaiting_whatsapp') {
-    await supabase.from('users').update({ whatsapp_number: text, state: 'idle' }).eq('telegram_id', telegram_id);
+    await supabase.from('users').update({ whatsapp_number: text, state: 'idle' }).eq('telegram_id', String(telegram_id));
     const { data: settings } = await supabase.from('settings').select('*').eq('id', 1).single();
     
     const instruct = `✅ <b>WhatsApp Saved!</b>\n\nNow follow these final steps:\n\n` +
@@ -434,76 +527,14 @@ bot.on('text', async (ctx) => {
     const realBalance = (user.total_referrals || 0) * settings.reward_amount;
     
     // Fraud check
-    const { data: existing } = await supabase.from('payout_requests').select('telegram_id').eq('bank_details', text).neq('telegram_id', telegram_id).limit(1);
+    const { data: existing } = await supabase.from('payout_requests').select('telegram_id').eq('bank_details', text).neq('telegram_id', String(telegram_id)).limit(1);
     if (existing && existing.length > 0) {
-       adminIds.forEach(aid => { try { ctx.telegram.sendMessage(aid, `🚨 <b>FRAUD ALERT</b>\nUser <code>${telegram_id}</code> using same bank as User <code>${existing[0].telegram_id}</code>.`, { parse_mode: 'HTML' }); } catch(e){} });
+       adminIds.forEach(aid => { try { ctx.telegram.sendMessage(String(aid), `🚨 <b>FRAUD ALERT</b>\nUser <code>${telegram_id}</code> using same bank as User <code>${existing[0].telegram_id}</code>.`, { parse_mode: 'HTML' }); } catch(e){} });
     }
 
-    await supabase.from('payout_requests').insert({ telegram_id, amount: realBalance, bank_details: text });
-    await supabase.from('users').update({ state: 'idle', balance: 0 }).eq('telegram_id', telegram_id);
+    await supabase.from('payout_requests').insert({ telegram_id: String(telegram_id), amount: realBalance, bank_details: text });
+    await supabase.from('users').update({ state: 'idle', balance: 0 }).eq('telegram_id', String(telegram_id));
     return ctx.reply('✅ <b>Request Submitted!</b> Admin will review.', { parse_mode: 'HTML', ...mainMenu });
-  }
-
-  if (ctx.isAdmin && user.state.startsWith('admin_awaiting_')) {
-    if (text === '❌ Cancel') {
-      await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-      return ctx.reply('Canceled.', adminMenu);
-    }
-
-    if (user.state === 'admin_awaiting_broadcast') {
-      const { data: targets } = await supabase.from('users').select('telegram_id').eq('is_verified', true);
-      await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-      ctx.reply(`🚀 Starting broadcast to ${targets.length} users...`);
-      let count = 0;
-      for (const t of targets) {
-        try { await ctx.telegram.sendMessage(t.telegram_id, `📢 <b>ANNOUNCEMENT</b>\n\n${text}`, { parse_mode: 'HTML' }); count++; } catch (e) {}
-      }
-      return ctx.reply(`✅ <b>Broadcast Complete</b>\nSent to ${count} users.`, { parse_mode: 'HTML', ...adminMenu });
-    }
-
-    if (user.state === 'admin_awaiting_reward') {
-       await supabase.from('settings').update({ reward_amount: parseInt(text) || 0 }).eq('id', 1);
-       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-       return ctx.reply('✅ Reward Updated.', adminMenu);
-    }
-
-    if (user.state === 'admin_awaiting_group_link') {
-       await supabase.from('settings').update({ group_link: text }).eq('id', 1);
-       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-       return ctx.reply('✅ Group Link Updated.', adminMenu);
-    }
-
-    if (user.state === 'admin_awaiting_contact_link') {
-       await supabase.from('settings').update({ contact_link: text }).eq('id', 1);
-       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-       return ctx.reply('✅ Contact Link Updated.', adminMenu);
-    }
-
-    if (user.state === 'admin_awaiting_verify_id') {
-       const uid = parseInt(text);
-       const { data: target } = await supabase.from('users').select('*').eq('telegram_id', uid).single();
-       if (!target) return ctx.reply('❌ User not found.');
-       const { data: s } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
-       const { data: success } = await supabase.rpc('verify_user_and_reward', { u_id: uid, r_id: target.referred_by || null, amt: parseInt(s.reward_amount) });
-       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', ctx.from.id);
-       
-       if (!success) return ctx.reply('⚠️ User was already verified.', adminMenu);
-
-       try { await ctx.telegram.sendMessage(uid, '🎊 <b>Account Verified!</b>', mainMenu); } catch(e) {}
-       return ctx.reply('✅ User Verified.', adminMenu);
-    }
-
-    if (user.state === 'admin_awaiting_ban_id') {
-       await supabase.from('users').update({ is_banned: true, state: 'idle' }).eq('telegram_id', parseInt(text));
-       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-       return ctx.reply('🚫 User Banned.', adminMenu);
-    }
-
-    if (user.state === 'admin_awaiting_approve_id') {
-       await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', parseInt(text));
-       await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', telegram_id);
-       return ctx.reply('✅ Payout Approved.', adminMenu);
-    }
   }
 });
 

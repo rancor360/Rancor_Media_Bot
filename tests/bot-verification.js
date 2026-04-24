@@ -38,8 +38,8 @@ const testExclusion = () => {
         '📊 My Stats', '💰 Balance', '🔗 Referral Link', '💸 Redeem', '📜 Policies',
         '⏳ Verifications', '💸 Payout Queue', '👥 User Directory', '📥 Download Report',
         '⚙️ Settings', '➕ More Tools', '🏠 Home', '✅ Verify by ID', '🚫 Ban User',
-        '💰 Set Reward', '💸 Approve Payout', '📱 Set Group Link', '👤 Set Contact Link',
-        '⬅️ Back', '📢 Broadcast', '🔔 Remind Admin'
+        '🔓 Unban User', '💰 Set Reward', '💸 Approve Payout', '📱 Set Group Link',
+        '👤 Set Contact Link', '📢 Broadcast', '⬅️ Back', '🔔 Remind Admin'
     ];
     
     const incomingText = '📊 My Stats';

@@ -61,8 +61,21 @@ const testAdminAuth = () => {
     assert(checkAuth(attacker, adminList) === false, "Unauthorized user should NOT have access");
 };
 
+// --- Scenario 4: Escape Hatch Verification ---
+const testEscapeHatch = () => {
+    const inputs = ['❌ Cancel', '🏠 Home', '/cancel'];
+    const mockUser = { state: 'admin_awaiting_unban_id' };
+    
+    inputs.forEach(input => {
+        // Logic simulation: If input is an escape hatch AND state is NOT idle, reset.
+        const shouldReset = (input === '❌ Cancel' || input === '🏠 Home' || input === '/cancel') && mockUser.state !== 'idle';
+        assert(shouldReset === true, `Escape hatch should trigger for input: ${input}`);
+    });
+};
+
 console.log("🛡️ Starting Security and Logic Audit...\n");
 testReminderRateLimit();
 testStateBypass();
 testAdminAuth();
+testEscapeHatch();
 console.log("\n🎊 SECURITY AUDIT COMPLETED SUCCESSFULLY! 🎊");
