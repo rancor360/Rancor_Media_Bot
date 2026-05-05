@@ -147,13 +147,10 @@ bot.hears('📊 My Stats', async (ctx) => {
 });
 
 bot.hears('💰 Balance', async (ctx) => {
-  const { data: user } = await supabase.from('users').select('total_referrals, is_verified').eq('telegram_id', ctx.from.id).single();
+  const { data: user } = await supabase.from('users').select('balance, is_verified').eq('telegram_id', ctx.from.id).single();
   if (!user || !user.is_verified) return ctx.reply('⚠️ Account not yet verified.');
 
-  const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
-  const currentBalance = (user.total_referrals || 0) * settings.reward_amount;
-  
-  ctx.reply(`💰 <b>Current Balance:</b> ₦${currentBalance}\n\n<i>(Calculated at the current rate of ₦${settings.reward_amount} per referral)</i>`, { parse_mode: 'HTML' });
+  ctx.reply(`💰 <b>Current Balance:</b> ₦${user.balance || 0}\n\n<i>(Verified earnings available for withdrawal)</i>`, { parse_mode: 'HTML' });
 });
 
 bot.hears('🔗 Referral Link', async (ctx) => {
@@ -170,14 +167,18 @@ bot.hears('💸 Redeem', async (ctx) => {
   const { data: user } = await supabase.from('users').select('*').eq('telegram_id', ctx.from.id).single();
   if (!user || !user.is_verified) return ctx.reply('⚠️ Account not verified.');
 
-  if (user.total_referrals < 3) return ctx.reply('⚠️ Min 3 verified referrals required to redeem.');
+  // 1. Minimum referrals check
+  if (user.total_referrals < 3) return ctx.reply('⚠️ Min 3 verified referrals required to unlock withdrawals.');
   
-  const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
-  const currentBalance = (user.total_referrals || 0) * settings.reward_amount;
-  if (currentBalance <= 0) return ctx.reply('⚠️ Your balance is ₦0.');
+  // 2. Existing request check
+  const { data: pending } = await supabase.from('payout_requests').select('id').eq('telegram_id', String(ctx.from.id)).eq('status', 'pending').single();
+  if (pending) return ctx.reply('⚠️ You already have a <b>pending payout request</b>. Please wait for admin approval before requesting again.', { parse_mode: 'HTML' });
+
+  // 3. Balance check
+  if (!user.balance || user.balance <= 0) return ctx.reply('⚠️ Your spendable balance is ₦0.');
 
   await supabase.from('users').update({ state: 'awaiting_bank' }).eq('telegram_id', ctx.from.id);
-  ctx.reply('🏦 <b>Bank Details Request</b>\n\nPlease send your bank details (Bank Name, Account #, Account Name):', { parse_mode: 'HTML', ...cancelInline });
+  ctx.reply(`🏦 <b>Redeem ₦${user.balance}</b>\n\nPlease send your bank details (Bank Name, Account #, Account Name):`, { parse_mode: 'HTML', ...cancelInline });
 });
 
 bot.hears(/Policies/i, async (ctx) => {
@@ -283,8 +284,7 @@ bot.hears('📥 Download Report', async (ctx) => {
   
   let csv = 'Telegram_ID,First_Name,Username,WhatsApp,Referred_By,Total_Refs,Balance,Verified,Banned,Joined\n';
   users.forEach(u => {
-    const bal = (u.total_referrals || 0) * settings.reward_amount;
-    csv += `${u.telegram_id},"${u.first_name || ''}","${u.username || ''}","${u.whatsapp_number || ''}",${u.referred_by || ''},${u.total_referrals || 0},${bal},${u.is_verified},${u.is_banned},"${new Date(u.created_at).toLocaleDateString()}"\n`;
+    csv += `${u.telegram_id},"${u.first_name || ''}","${u.username || ''}","${u.whatsapp_number || ''}",${u.referred_by || ''},${u.total_referrals || 0},${u.balance || 0},${u.is_verified},${u.is_banned},"${new Date(u.created_at).toLocaleDateString()}"\n`;
   });
 
   const buffer = Buffer.from(csv, 'utf-8');
@@ -498,9 +498,22 @@ bot.on('text', async (ctx) => {
     }
 
     if (user.state === 'admin_awaiting_approve_id') {
-       await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', parseInt(text));
+       const requestId = parseInt(text);
+       const { data: payReq } = await supabase.from('payout_requests').select('telegram_id, amount').eq('id', requestId).eq('status', 'pending').single();
+       
+       if (!payReq) return ctx.reply('⚠️ Invalid or already processed Request ID.', adminMenu);
+
+       await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', requestId);
        await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
-       return ctx.reply('✅ Payout Approved.', adminMenu);
+       
+       // Notify User
+       try {
+         await ctx.telegram.sendMessage(String(payReq.telegram_id), `✅ <b>Payout Approved!</b>\n\nYour withdrawal request for ₦${payReq.amount} has been approved and processed. Please check your bank account.`, { parse_mode: 'HTML' });
+       } catch (e) {
+         console.error('Failed to notify user:', e);
+       }
+
+       return ctx.reply(`✅ Payout ID ${requestId} Approved. User notified.`, adminMenu);
     }
   }
 
@@ -523,8 +536,11 @@ bot.on('text', async (ctx) => {
   }
 
   if (user.state === 'awaiting_bank') {
-    const { data: settings } = await supabase.from('settings').select('reward_amount').eq('id', 1).single();
-    const realBalance = (user.total_referrals || 0) * settings.reward_amount;
+    const amountToPay = user.balance || 0;
+    if (amountToPay <= 0) {
+      await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+      return ctx.reply('⚠️ Your balance is 0. Request cancelled.', mainMenu);
+    }
     
     // Fraud check
     const { data: existing } = await supabase.from('payout_requests').select('telegram_id').eq('bank_details', text).neq('telegram_id', String(telegram_id)).limit(1);
@@ -532,7 +548,7 @@ bot.on('text', async (ctx) => {
        adminIds.forEach(aid => { try { ctx.telegram.sendMessage(String(aid), `🚨 <b>FRAUD ALERT</b>\nUser <code>${telegram_id}</code> using same bank as User <code>${existing[0].telegram_id}</code>.`, { parse_mode: 'HTML' }); } catch(e){} });
     }
 
-    await supabase.from('payout_requests').insert({ telegram_id: String(telegram_id), amount: realBalance, bank_details: text });
+    await supabase.from('payout_requests').insert({ telegram_id: String(telegram_id), amount: amountToPay, bank_details: text });
     await supabase.from('users').update({ state: 'idle', balance: 0 }).eq('telegram_id', String(telegram_id));
     return ctx.reply('✅ <b>Request Submitted!</b> Admin will review.', { parse_mode: 'HTML', ...mainMenu });
   }
