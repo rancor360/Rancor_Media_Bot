@@ -1,4 +1,4 @@
--- --- CONSOLIDATED SUPABASE SETUP ---
+-- --- CONSOLIDATED SUPABASE SETUP (v2.1 - Idempotent & Secure) ---
 -- Run this in your Supabase SQL Editor to prepare your database.
 
 -- 1. Users Table
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
     is_banned BOOLEAN DEFAULT FALSE,
     state TEXT DEFAULT 'idle',
     whatsapp_number TEXT,
+    last_reminded_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -41,31 +42,47 @@ CREATE TABLE IF NOT EXISTS admins (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. RPC Function: Safe Verification & Reward
--- This ensures user activation and referral bonus happen in one transaction.
+-- 5. SAFETY MIGRATIONS (Run if columns are missing)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_number TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS group_link TEXT;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS contact_link TEXT;
+
+-- 6. RPC FUNCTION: Idempotent Verification & Reward
+-- This ensures user activation and referral bonus happen exactly once.
+DROP FUNCTION IF EXISTS verify_user_and_reward(bigint, bigint, integer);
+
 CREATE OR REPLACE FUNCTION verify_user_and_reward(u_id BIGINT, r_id BIGINT, amt INTEGER)
-RETURNS void AS $$
+RETURNS BOOLEAN AS $$
+DECLARE
+    rows_affected INTEGER;
 BEGIN
-    -- 1. Activate the user
-    UPDATE users SET is_verified = TRUE WHERE telegram_id = u_id;
+    -- 1. Try to activate the user ONLY if they are currently unverified
+    UPDATE users SET 
+        is_verified = TRUE, 
+        state = 'idle' 
+    WHERE telegram_id = u_id AND is_verified = FALSE;
     
-    -- 2. If there is a referrer, give them the bonus
-    IF r_id IS NOT NULL THEN
-        UPDATE users 
-        SET balance = balance + amt, 
-            total_referrals = total_referrals + 1 
-        WHERE telegram_id = r_id;
+    -- Capture how many rows were actually changed
+    GET DIAGNOSTICS rows_affected = ROW_COUNT;
+
+    -- 2. Only proceed with the reward if we actually performed the verification
+    IF rows_affected > 0 THEN
+        IF r_id IS NOT NULL THEN
+            UPDATE users 
+            SET balance = balance + amt, 
+                total_referrals = total_referrals + 1 
+            WHERE telegram_id = r_id;
+        END IF;
+        RETURN TRUE; -- Success
     END IF;
+
+    RETURN FALSE; -- Already verified, did nothing
 END;
 $$ LANGUAGE plpgsql;
 
--- 6. Initial Configuration
+-- 7. INITIAL CONFIGURATION
 INSERT INTO settings (id, reward_amount, group_link, contact_link) 
 VALUES (1, 150, 'https://chat.whatsapp.com/your-link', 'https://wa.me/your-number')
 ON CONFLICT (id) DO NOTHING;
-
--- 7. Safety Migrations
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_number TEXT;
-ALTER TABLE settings ADD COLUMN IF NOT EXISTS group_link TEXT;
-ALTER TABLE settings ADD COLUMN IF NOT EXISTS contact_link TEXT;

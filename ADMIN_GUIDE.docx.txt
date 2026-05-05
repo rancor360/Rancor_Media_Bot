@@ -1,0 +1,55 @@
+# Rancor Media Bot — Admin Operational Guide
+
+Welcome, Admin! This document simplifies managing your referral bot. Everything is controlled directly from your Telegram chat with the bot.
+
+---
+
+## 1. Monitoring New Users
+When a new user joins, you will receive an automatic notification. To see everyone waiting for your manual approval:
+*   **Command:** `/unverified`
+*   **What it does:** Displays a list of all registered users who are waiting for you to verify them.
+
+## 2. Verifying Users (Manual Approval)
+After a user has joined your WhatsApp group and sent you the screenshot of your saved contact, you must activate their account so they can start referring others and earning.
+*   **Command:** `/verify <User_Telegram_ID>`
+*   **Example:** `/verify 8204006525`
+*   **What happens:** 
+    1. The user's account is activated.
+    2. The person who referred them is automatically paid their reward.
+    3. Both the referrer and the new user are notified.
+
+## 3. Managing Payouts
+When a user hits 3 verified referrals and requests a payout:
+*   **Command:** `/payouts`
+*   **What it does:** Shows all pending requests, including the user's name, WhatsApp number, amount, and bank details.
+*   **To Finish Payout:** After sending the money to the user's bank account, type:
+    *   `/approve <Request_ID>`
+*   **What happens:** The user is notified that their payout has been processed.
+
+## 4. Admin Directory (The User List)
+To see a full list of all your users, their referral counts, and their earnings:
+*   **Command:** `/listusers`
+*   **What it shows:** 
+    *   `✅` (Verified) or `⏳` (Unverified)
+    *   User Name & ID
+    *   WhatsApp Number
+    *   Referral Count
+    *   Earnings (₦)
+
+## 5. Security & Settings
+*   **Ban a User:** If you find a cheater, type `/ban <User_Telegram_ID>`.
+*   **Unban a User:** Type `/unban <User_Telegram_ID>`.
+*   **Update Rewards:** Change the referral reward amount (e.g., to ₦200) by typing `/setreward 200`.
+*   **Update WhatsApp Links:** 
+    *   To update your group: `/setlink group <New_URL>`
+    *   To update your contact link: `/setlink contact <New_URL>`
+
+---
+
+## Quick Admin Checklist
+- [ ] **Check notifications:** When you get a "New User Pending" alert, check their WhatsApp for the screenshot.
+- [ ] **Verify:** Run `/verify <ID>` once confirmed.
+- [ ] **Payouts:** Check `/payouts` daily and run `/approve <ID>` after payment.
+- [ ] **Security:** Use `/listusers` to check for suspicious activity.
+
+*If you need help, simply type `/admin` to the bot to see this command list at any time.*
