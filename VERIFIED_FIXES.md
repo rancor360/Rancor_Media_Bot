@@ -45,3 +45,12 @@ This document tracks all technical issues identified, resolved, and officially v
 *   **Problem:** Multiple users sharing bank accounts (Fraud).
 *   **Solution:** Automated **Fraud Alert** notification for duplicate bank details.
 *   **Status:** VERIFIED.
+
+## 5. Payout System Overhaul (April 22, 2026)
+*   **Problem:** Users remaining in queue after payment; non-responsive approval buttons.
+*   **Solution:** 
+    1. **Interactive Buttons:** Refactored Payout Queue to use inline `Approve` buttons for one-click processing.
+    2. **Atomic Logic:** Implemented `create_payout_request` RPC to ensure balance deduction and request creation happen in one transaction.
+    3. **Unified Security:** Consolidated all approval paths (Button, Command, State) into a single hardened helper with status-locking.
+*   **Status:** VERIFIED.
+
