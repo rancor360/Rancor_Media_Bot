@@ -33,4 +33,6 @@ Shift the source of truth for the user's available funds from a calculated value
 ## Success Criteria
 - [ ] User's `💰 Balance` shows ₦0 after a successful "Redeem" action.
 - [ ] User's `💰 Balance` remains ₦0 after admin approval.
-- [ ] Payout disappears from `pending` queue upon approval.
+- [x] Payout disappears from `pending` queue upon approval.
+- [x] Improved ID parsing for payout approval.
+- [x] Added /payouts and /approve command aliases.

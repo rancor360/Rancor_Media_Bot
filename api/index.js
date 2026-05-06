@@ -277,6 +277,34 @@ bot.hears('💸 Payout Queue', async (ctx) => {
   return ctx.reply(msg, { parse_mode: 'HTML' });
 });
 
+bot.command('payouts', async (ctx) => {
+  if (!ctx.isAdmin) return;
+  const { data: reqs } = await supabase.from('payout_requests').select('*, users(first_name, whatsapp_number)').eq('status', 'pending');
+  if (!reqs || reqs.length === 0) return ctx.reply('No payouts.');
+  let msg = reqs.map(r => `ID: <code>${r.id}</code>\nUser: ${r.users.first_name}\nAmt: ₦${r.amount}\nDetails: ${r.bank_details}`).join('\n\n');
+  return ctx.reply(msg, { parse_mode: 'HTML' });
+});
+
+bot.command('approve', async (ctx) => {
+  if (!ctx.isAdmin) return;
+  const text = ctx.message.text.split(' ')[1];
+  if (!text) return ctx.reply('Usage: /approve <ID>');
+  
+  const requestId = parseInt(text);
+  const { data: payReq } = await supabase.from('payout_requests').select('telegram_id, amount').eq('id', requestId).eq('status', 'pending').single();
+  
+  if (!payReq) return ctx.reply('⚠️ Invalid or already processed Request ID.', adminMenu);
+
+  const { error } = await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', requestId);
+  if (error) return ctx.reply('❌ Database Error.');
+
+  try {
+    await ctx.telegram.sendMessage(String(payReq.telegram_id), `✅ <b>Payout Approved!</b>\n\nYour withdrawal request for ₦${payReq.amount} has been approved and processed.`, { parse_mode: 'HTML' });
+  } catch (e) {}
+
+  return ctx.reply(`✅ Payout ID ${requestId} Approved.`, adminMenu);
+});
+
 bot.hears('📥 Download Report', async (ctx) => {
   if (!ctx.isAdmin) return;
   const { data: users } = await supabase.from('users').select('*').order('created_at', { ascending: false });
@@ -498,12 +526,26 @@ bot.on('text', async (ctx) => {
     }
 
     if (user.state === 'admin_awaiting_approve_id') {
-       const requestId = parseInt(text);
+       const requestIdMatch = text.match(/\d+/);
+       const requestId = requestIdMatch ? parseInt(requestIdMatch[0]) : null;
+       
+       if (!requestId) {
+         return ctx.reply('❌ <b>Invalid ID</b>\nPlease enter only the numeric Payout ID.', { parse_mode: 'HTML', ...Markup.keyboard([['❌ Cancel']]).resize() });
+       }
+
        const { data: payReq } = await supabase.from('payout_requests').select('telegram_id, amount').eq('id', requestId).eq('status', 'pending').single();
        
-       if (!payReq) return ctx.reply('⚠️ Invalid or already processed Request ID.', adminMenu);
+       if (!payReq) {
+         await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
+         return ctx.reply('⚠️ Invalid or already processed Request ID.', adminMenu);
+       }
 
-       await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', requestId);
+       const { error } = await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', requestId);
+       if (error) {
+         console.error('Approval Error:', error);
+         return ctx.reply('❌ <b>Database Error</b>\nFailed to update payout status.', adminMenu);
+       }
+
        await supabase.from('users').update({ state: 'idle' }).eq('telegram_id', String(telegram_id));
        
        // Notify User
