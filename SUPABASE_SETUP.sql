@@ -82,7 +82,27 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 7. INITIAL CONFIGURATION
+-- 7. RPC FUNCTION: Atomic Payout Request
+CREATE OR REPLACE FUNCTION create_payout_request(u_id BIGINT, amt INTEGER, bank TEXT)
+RETURNS BOOLEAN AS $$
+DECLARE
+    current_balance INTEGER;
+BEGIN
+    SELECT balance INTO current_balance FROM users WHERE telegram_id = u_id FOR UPDATE;
+    
+    IF current_balance < amt OR amt <= 0 THEN
+        RETURN FALSE;
+    END IF;
+
+    UPDATE users SET balance = balance - amt, state = 'idle' WHERE telegram_id = u_id;
+    INSERT INTO payout_requests (telegram_id, amount, bank_details, status)
+    VALUES (u_id, amt, bank, 'pending');
+
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 8. INITIAL CONFIGURATION
 INSERT INTO settings (id, reward_amount, group_link, contact_link) 
 VALUES (1, 150, 'https://chat.whatsapp.com/your-link', 'https://wa.me/your-number')
 ON CONFLICT (id) DO NOTHING;
