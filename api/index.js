@@ -272,17 +272,47 @@ bot.hears('👥 User Directory', async (ctx) => {
 bot.hears('💸 Payout Queue', async (ctx) => {
   if (!ctx.isAdmin) return;
   const { data: reqs } = await supabase.from('payout_requests').select('*, users(first_name, whatsapp_number)').eq('status', 'pending');
-  if (!reqs || reqs.length === 0) return ctx.reply('No payouts.');
-  let msg = reqs.map(r => `ID: <code>${r.id}</code>\nUser: ${r.users.first_name}\nAmt: ₦${r.amount}\nDetails: ${r.bank_details}`).join('\n\n');
-  return ctx.reply(msg, { parse_mode: 'HTML' });
+  if (!reqs || reqs.length === 0) return ctx.reply('No pending payouts.');
+  
+  for (const r of reqs) {
+    const msg = `🆔 <b>Payout Request: #${r.id}</b>\n👤 <b>User:</b> ${r.users.first_name}\n💰 <b>Amount:</b> ₦${r.amount}\n🏦 <b>Bank:</b> <code>${r.bank_details}</code>`;
+    const buttons = Markup.inlineKeyboard([
+      [Markup.button.callback(`✅ Approve ₦${r.amount}`, `pay_approve_${r.id}`)]
+    ]);
+    await ctx.reply(msg, { parse_mode: 'HTML', ...buttons });
+  }
 });
 
 bot.command('payouts', async (ctx) => {
   if (!ctx.isAdmin) return;
   const { data: reqs } = await supabase.from('payout_requests').select('*, users(first_name, whatsapp_number)').eq('status', 'pending');
-  if (!reqs || reqs.length === 0) return ctx.reply('No payouts.');
-  let msg = reqs.map(r => `ID: <code>${r.id}</code>\nUser: ${r.users.first_name}\nAmt: ₦${r.amount}\nDetails: ${r.bank_details}`).join('\n\n');
-  return ctx.reply(msg, { parse_mode: 'HTML' });
+  if (!reqs || reqs.length === 0) return ctx.reply('No pending payouts.');
+  
+  for (const r of reqs) {
+    const msg = `🆔 <b>Payout Request: #${r.id}</b>\n👤 <b>User:</b> ${r.users.first_name}\n💰 <b>Amount:</b> ₦${r.amount}\n🏦 <b>Bank:</b> <code>${r.bank_details}</code>`;
+    const buttons = Markup.inlineKeyboard([
+      [Markup.button.callback(`✅ Approve ₦${r.amount}`, `pay_approve_${r.id}`)]
+    ]);
+    await ctx.reply(msg, { parse_mode: 'HTML', ...buttons });
+  }
+});
+
+bot.action(/^pay_approve_(\d+)$/, async (ctx) => {
+  if (!ctx.isAdmin) return ctx.answerCbQuery('🚫 Unauthorized');
+  const requestId = parseInt(ctx.match[1]);
+  
+  const { data: payReq } = await supabase.from('payout_requests').select('telegram_id, amount').eq('id', requestId).eq('status', 'pending').single();
+  if (!payReq) return ctx.answerCbQuery('⚠️ Already processed.');
+
+  const { error } = await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', requestId);
+  if (error) return ctx.answerCbQuery('❌ DB Error');
+
+  try {
+    await ctx.telegram.sendMessage(String(payReq.telegram_id), `✅ <b>Payout Approved!</b>\n\nYour withdrawal request for ₦${payReq.amount} has been approved and processed.`, { parse_mode: 'HTML' });
+  } catch (e) {}
+
+  await ctx.editMessageText(ctx.callbackQuery.message.text + '\n\n✅ <b>APPROVED</b>', { parse_mode: 'HTML' });
+  ctx.answerCbQuery('Payout Approved!');
 });
 
 bot.command('approve', async (ctx) => {
