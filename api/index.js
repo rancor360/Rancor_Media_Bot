@@ -332,20 +332,28 @@ bot.command('payouts', async (ctx) => {
   }
 });
 
-bot.action(/^pay_approve_(\d+)$/, async (ctx) => {
+bot.action(/^pay_approve_(.+)$/, async (ctx) => {
   try {
     const requestId = ctx.match[1];
-    await ctx.answerCbQuery('Processing...').catch(() => {});
-
+    
     const result = await processPayoutApproval(requestId, ctx);
     
     if (result.error) {
-      return ctx.editMessageText(ctx.callbackQuery.message.text + `\n\n❌ ${result.error}`, { parse_mode: 'HTML' }).catch(() => {});
+      // Remove button if it's already processed, otherwise just show error
+      if (result.error.includes('Already')) {
+        await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+      }
+      return ctx.answerCbQuery(result.error, { show_alert: true }).catch(() => {});
     }
 
-    await ctx.editMessageText(ctx.callbackQuery.message.text + '\n\n✅ <b>APPROVED & NOTIFIED</b>', { parse_mode: 'HTML' }).catch(() => {});
+    await ctx.answerCbQuery('✅ Payout Approved!', { show_alert: true }).catch(() => {});
+    
+    // Safely remove the inline keyboard without triggering HTML parsing errors on plain text
+    await ctx.editMessageReplyMarkup(undefined).catch(() => {});
+    
   } catch (err) {
     console.error('[Action Error] pay_approve:', err);
+    ctx.answerCbQuery('❌ System error occurred.', { show_alert: true }).catch(() => {});
   }
 });
 
