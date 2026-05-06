@@ -298,21 +298,68 @@ bot.command('payouts', async (ctx) => {
 });
 
 bot.action(/^pay_approve_(\d+)$/, async (ctx) => {
-  if (!ctx.isAdmin) return ctx.answerCbQuery('🚫 Unauthorized');
-  const requestId = parseInt(ctx.match[1]);
-  
-  const { data: payReq } = await supabase.from('payout_requests').select('telegram_id, amount').eq('id', requestId).eq('status', 'pending').single();
-  if (!payReq) return ctx.answerCbQuery('⚠️ Already processed.');
-
-  const { error } = await supabase.from('payout_requests').update({ status: 'approved' }).eq('id', requestId);
-  if (error) return ctx.answerCbQuery('❌ DB Error');
-
   try {
-    await ctx.telegram.sendMessage(String(payReq.telegram_id), `✅ <b>Payout Approved!</b>\n\nYour withdrawal request for ₦${payReq.amount} has been approved and processed.`, { parse_mode: 'HTML' });
-  } catch (e) {}
+    const requestId = ctx.match[1];
+    console.log(`[Admin] Payout approval clicked for ID: ${requestId} by ${ctx.from.id}`);
 
-  await ctx.editMessageText(ctx.callbackQuery.message.text + '\n\n✅ <b>APPROVED</b>', { parse_mode: 'HTML' });
-  ctx.answerCbQuery('Payout Approved!');
+    if (!ctx.isAdmin) {
+      return ctx.answerCbQuery('🚫 Unauthorized: Admin access required.', { show_alert: true });
+    }
+
+    // 1. Give immediate feedback to stop the loading spinner
+    await ctx.answerCbQuery('Processing payout...').catch(() => {});
+
+    // 2. Fetch the request details
+    const { data: payReq, error: fetchError } = await supabase
+      .from('payout_requests')
+      .select('telegram_id, amount, status')
+      .eq('id', requestId)
+      .single();
+
+    if (fetchError || !payReq) {
+      console.error(`[Error] Request #${requestId} not found:`, fetchError);
+      return ctx.editMessageText('❌ <b>Error:</b> Payout request not found.', { parse_mode: 'HTML' }).catch(() => {});
+    }
+
+    if (payReq.status !== 'pending') {
+      return ctx.editMessageText(`⚠️ <b>Already Processed</b>\nThis request was already ${payReq.status}.`, { parse_mode: 'HTML' }).catch(() => {});
+    }
+
+    // 3. Update the database
+    const { error: updateError } = await supabase
+      .from('payout_requests')
+      .update({ status: 'approved' })
+      .eq('id', requestId);
+
+    if (updateError) {
+      console.error(`[Error] Failed to update request #${requestId}:`, updateError);
+      return ctx.reply('❌ <b>Database Error:</b> Could not approve payout. Please try again.', { parse_mode: 'HTML' });
+    }
+
+    console.log(`[Success] Payout #${requestId} approved for user ${payReq.telegram_id}`);
+
+    // 4. Notify the user
+    try {
+      await ctx.telegram.sendMessage(
+        String(payReq.telegram_id),
+        `✅ <b>Payout Approved!</b>\n\nYour withdrawal request for ₦${payReq.amount} has been approved and processed. Please check your bank account.`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (notifyError) {
+      console.error(`[Warning] Failed to notify user ${payReq.telegram_id}:`, notifyError.message);
+    }
+
+    // 5. Update the Admin's view
+    const currentMsg = ctx.callbackQuery.message.text || '';
+    await ctx.editMessageText(currentMsg + '\n\n✅ <b>APPROVED & NOTIFIED</b>', { parse_mode: 'HTML' }).catch(err => {
+      console.error('[Error] Failed to update message text:', err.message);
+      return ctx.reply(`✅ Payout #${requestId} Approved!`, adminMenu);
+    });
+
+  } catch (globalError) {
+    console.error('[Fatal] Action pay_approve error:', globalError);
+    return ctx.answerCbQuery('❌ System error occurred.').catch(() => {});
+  }
 });
 
 bot.command('approve', async (ctx) => {
